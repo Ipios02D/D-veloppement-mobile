@@ -1,25 +1,38 @@
-#import "../vibrant-color.typ" : *
+#import "./shafoin-typst-template/vibrant-color.typ" : *
 
 #show: doc => vibrant-color(
-  theme: "blue-theme",  // choix du theme parmi pastel-theme, blue-theme, green-theme, red-theme
-  title: "Thème custom typst",  // titre du document
+  theme: "pastel-theme",  // choix du theme parmi pastel-theme, blue-theme, green-theme, red-theme
+  title: "Rapport Développement Mobile",  // titre du document
   authors: (  // liste des auteurs
-    "SHAfoin Shafoin",
+    "Louis CHALVIGNAC",
+    "Clément CANO",
+    "Antoine BEAUPREZ",
+    "Emilien COUSIN",
   ),
   lang: "fr",
   heading-numbering: true,
-  sub-authors: "4A ICY",  // texte optionnel au dessus des auteurs ex : groupe 2, 4A ICY 
-  description: "Présentation du thème custom typst", // description du document
+  sub-authors: "3A ICY",  // texte optionnel au dessus des auteurs ex : groupe 2, 4A ICY 
+  description: "Présentation de l'application CityMov", // description du document
   date: datetime(day: 10, month: 3, year: 2025), // date du document, sous format datetime
-  subject: "Matière", // matière du document ou texte en bas
-  bib-yaml: bibliography("refs.yaml"),  // référence vers une bibliographie
-  logo: image("insa-hdf.png", width: 33%),
+  subject: "Développement Mobile", // matière du document ou texte en bas
+  bib-yaml: bibliography("./shafoin-typst-template/example/refs.yaml"),  // référence vers une bibliographie
+  logo: image("./shafoin-typst-template/example/insa-hdf.png", width: 33%),
   doc
 )
 
-= Test1 
+= Cahier des charges
 
-== Titre 2
+== Contexte et besoins
+Dans l'optique d'améliorer la qualité de vie urbaines pour tous, nous avons décidé de créer une application nommé *_CityMove_*. Son objectif est simple : informer les habitants des différents évenements présent dans leur ville ou aux alentours. 
+
+Un seconde partie de l'application permettra à la mairie et aux associations inscrites sur l'application de sonder la habitants afin d'obtenir des retours importants sur des évenements ou des sujets clé pour la municipalité.
+
+== Périmètre Technique 
+Afin de répondre au mieux à nos besoins, nous allons utiliser diverses solutions techniques.
+
+=== Outils collaboratif
+- GitHub pour le partage du code et des documents : #link("https://github.com/Ipios02D/D-veloppement-mobile")
+- Notion pour la répartition des tâches 
 
 === Titre 3
 
@@ -76,7 +89,7 @@ On peut #strike[barrer du texte], mettre du texte en *gras*, en _italique_, ou *
 #columns(2,[
   #figure(
     caption: [Une image d'un gros lapin. La caption des images est différente, avec une barre colorée selon le thème en arrière-plan.], 
-    image("lapin.jpg", width: 100%)
+    image("./shafoin-typst-template/example/lapin.jpg", width: 100%)
   )<lapin>
   #colbreak()
   #text[*Colonnes* : Nous avons placé un texte en colonnes. Les images, figures, comment, info, warning fonctionnent très bien avec, mais pas les codeblock. Il faut préciser soit même le \#columns pour l'utiliser.]
