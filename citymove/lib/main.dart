@@ -1,69 +1,24 @@
 import 'package:flutter/material.dart';
+// On importe le fichier qui contient la page de connexion
+import 'screens/auth_pages.dart';
 
 void main() {
-  runApp(const MyApp());
+  runApp(const CitymoveApp());
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class CitymoveApp extends StatelessWidget {
+  const CitymoveApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
+      title: 'Citymove',
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        // CORRECTION 1 : Ajout de ColorScheme
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
       ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
-    );
-  }
-}
-
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
-
-  final String title;
-
-  @override
-  State<MyHomePage> createState() => _MyHomePageState();
-}
-
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
-
-  void _incrementCounter() {
-    setState(() {
-      _counter++;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        title: Text(widget.title),
-      ),
-      body: Center(
-        child: Column(
-          // CORRECTION 2 : Ajout de MainAxisAlignment
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Text('You have pushed the button this many times:'),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
-            ),
-          ],
-        ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
-      ),
+      home: const LoginPage(), // On lance l'application sur la page de Login
     );
   }
 }
