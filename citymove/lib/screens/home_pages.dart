@@ -81,7 +81,7 @@ class HomeMairiePage extends StatelessWidget {
             const SizedBox(height: 16),
             ElevatedButton.icon(
               icon: const Icon(Icons.how_to_vote), label: const Text('Gérer les Votes'),
-              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const VotesPage(role: Role.mairie))),
+              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) =>  VotesPage(role: Role.mairie))),
             ),
             const SizedBox(height: 16),
             ElevatedButton.icon(
