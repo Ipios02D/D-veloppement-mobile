@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/role.dart';
 
 class NewsPage extends StatefulWidget {
@@ -12,6 +13,9 @@ class NewsPage extends StatefulWidget {
 class _NewsPageState extends State<NewsPage> {
   bool _showMap = false;
 
+  // Instance de Firestore
+  final FirebaseFirestore _db = FirebaseFirestore.instance;
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -24,20 +28,47 @@ class _NewsPageState extends State<NewsPage> {
           )
         ],
       ),
-      body: _showMap ? const Center(child: Text('Carte interactive ici')) : ListView.builder(
-        itemCount: 5,
-        itemBuilder: (context, index) {
-          return Card(
-            margin: const EdgeInsets.all(8),
-            child: ListTile(
-              title: Text('Événement ${index + 1}'),
-              subtitle: const Text('Type: Culturel\nLieu: Salle des fêtes'),
-              isThreeLine: true,
-              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EventDetailsPage())),
-              trailing: widget.role == Role.mairie
-                  ? IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () => _showDeleteConfirm(context))
-                  : null,
-            ),
+      // Remplacement de la ListView par le StreamBuilder
+      body: _showMap ? const Center(child: Text('Carte interactive ici')) : StreamBuilder<QuerySnapshot>(
+        stream: _db.collection('evenements').orderBy('date_creation', descending: true).snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.hasError) return const Center(child: Text("Erreur de chargement"));
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          final docs = snapshot.data!.docs;
+
+          if (docs.isEmpty) {
+            return const Center(child: Text("Aucun événement pour le moment."));
+          }
+
+          return ListView.builder(
+            itemCount: docs.length,
+            itemBuilder: (context, index) {
+              var event = docs[index];
+
+              // Sécurisation de la récupération des champs (au cas où ils sont vides)
+              String titre = event.data().toString().contains('nom') ? event['nom'] : 'Sans titre';
+              String lieu = event.data().toString().contains('lieu') ? event['lieu'] : 'Lieu non précisé';
+              String tag = event.data().toString().contains('tag') ? event['tag'] : 'Général';
+
+              return Card(
+                margin: const EdgeInsets.all(8),
+                child: ListTile(
+                  title: Text(titre),
+                  subtitle: Text('Type: $tag\nLieu: $lieu'),
+                  isThreeLine: true,
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EventDetailsPage())),
+                  trailing: widget.role == Role.mairie
+                      ? IconButton(
+                      icon: const Icon(Icons.delete, color: Colors.red),
+                      onPressed: () => _showDeleteConfirm(context, event.id) // On passe l'ID du document
+                  )
+                      : null,
+                ),
+              );
+            },
           );
         },
       ),
@@ -50,7 +81,7 @@ class _NewsPageState extends State<NewsPage> {
     );
   }
 
-  void _showDeleteConfirm(BuildContext context) {
+  void _showDeleteConfirm(BuildContext context, String documentId) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -58,13 +89,26 @@ class _NewsPageState extends State<NewsPage> {
         content: const Text('Voulez-vous vraiment supprimer cet événement ?'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text('Annuler')),
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Supprimer', style: TextStyle(color: Colors.red))),
+          TextButton(
+              onPressed: () {
+                // Suppression réelle dans Firestore
+                _db.collection('evenements').doc(documentId).delete();
+                Navigator.pop(context);
+              },
+              child: const Text('Supprimer', style: TextStyle(color: Colors.red))
+          ),
         ],
       ),
     );
   }
 
   void _showCreateEventPopup(BuildContext context) {
+    // Contrôleurs pour récupérer le texte des champs
+    final nomController = TextEditingController();
+    final tagController = TextEditingController();
+    final lieuController = TextEditingController();
+    final descController = TextEditingController();
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -74,13 +118,27 @@ class _NewsPageState extends State<NewsPage> {
           mainAxisSize: MainAxisSize.min,
           children: [
             const Text('Ajouter un Événement', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-            const TextField(decoration: InputDecoration(labelText: 'Nom de l\'événement')),
-            const TextField(decoration: InputDecoration(labelText: 'Tag (Sportif, Culturel...)')),
-            const TextField(decoration: InputDecoration(labelText: 'Lieu')),
-            const TextField(decoration: InputDecoration(labelText: 'Descriptif'), maxLines: 3),
-            const TextField(decoration: InputDecoration(labelText: 'Lien de participation (optionnel)')),
+            TextField(controller: nomController, decoration: const InputDecoration(labelText: 'Nom de l\'événement')),
+            TextField(controller: tagController, decoration: const InputDecoration(labelText: 'Tag (Sportif, Culturel...)')),
+            TextField(controller: lieuController, decoration: const InputDecoration(labelText: 'Lieu')),
+            TextField(controller: descController, decoration: const InputDecoration(labelText: 'Descriptif'), maxLines: 3),
             const SizedBox(height: 16),
-            ElevatedButton(onPressed: () => Navigator.pop(context), child: const Text('Créer l\'événement')),
+            ElevatedButton(
+                onPressed: () async {
+                  // Ajout réel dans Firestore
+                  if (nomController.text.isNotEmpty) {
+                    await _db.collection('evenements').add({
+                      'nom': nomController.text,
+                      'tag': tagController.text,
+                      'lieu': lieuController.text,
+                      'description': descController.text,
+                      'date_creation': FieldValue.serverTimestamp(),
+                    });
+                    if (context.mounted) Navigator.pop(context); // Ferme la popup
+                  }
+                },
+                child: const Text('Créer l\'événement')
+            ),
             const SizedBox(height: 16),
           ],
         ),
@@ -89,6 +147,7 @@ class _NewsPageState extends State<NewsPage> {
   }
 }
 
+// ... Gardez la classe EventDetailsPage que vous aviez déjà en dessous
 class EventDetailsPage extends StatelessWidget {
   const EventDetailsPage({super.key});
 
@@ -96,25 +155,7 @@ class EventDetailsPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Détails de l\'événement')),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Titre de l\'événement', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-            Chip(label: const Text('Culturel'), backgroundColor: Colors.purple.shade100),
-            const SizedBox(height: 16),
-            const Row(children: [Icon(Icons.location_on), SizedBox(width: 8), Text('Salle des fêtes, Trith-Saint-Léger')]),
-            const SizedBox(height: 16),
-            const Text('Description longue de l\'événement. Venez nombreux assister à ce moment unique de la vie de notre commune...'),
-            const Spacer(),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(onPressed: () {}, child: const Text('Participer')),
-            )
-          ],
-        ),
-      ),
+      body: const Center(child: Text("Détails à relier à Firestore")),
     );
   }
 }
