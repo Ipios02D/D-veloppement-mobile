@@ -29,22 +29,10 @@ version
 analysis_benchmark.json
 
 # packages file containing multi-root paths
-.packages.generated
+
 
 # Flutter/Dart/Pub related
-**/doc/api/
-.dart_tool/
-.flutter-plugins
-.flutter-plugins-dependencies
-**/generated_plugin_registrant.dart
-.packages
-.pub-preload-cache/
-.pub/
-build/
-flutter_*.png
-linked_*.ds
-unlinked.ds
-unlinked_spec.ds
+
 
 # Android related
 **/android/**/gradle-wrapper.jar
