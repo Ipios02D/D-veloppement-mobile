@@ -1,8 +1,19 @@
 import 'package:flutter/material.dart';
-// On importe le fichier qui contient la page de connexion
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
+
 import 'screens/auth_pages.dart';
 
-void main() {
+void main() async {
+  // 1. S'assurer que les widgets Flutter sont liés avant d'initialiser Firebase
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // 2. Initialisation de Firebase
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+
+  // 3. Lancement de l'application
   runApp(const CitymoveApp());
 }
 
@@ -18,7 +29,7 @@ class CitymoveApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
       ),
-      home: const LoginPage(), // On lance l'application sur la page de Login
+      home: const LoginPage(),
     );
   }
 }
