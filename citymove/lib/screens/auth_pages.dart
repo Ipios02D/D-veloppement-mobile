@@ -3,7 +3,7 @@ import '../models/role.dart';
 import 'home_pages.dart';
 
 class LoginPage extends StatelessWidget {
-  const LoginPage({super.key});
+  const LoginPage({super.key, required void Function(bool isDark) onThemeChanged, required bool isDarkMode});
 
   @override
   Widget build(BuildContext context) {
