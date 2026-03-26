@@ -3,6 +3,7 @@ import '../models/role.dart';
 import 'news_pages.dart';
 import 'votes_pages.dart';
 import 'admin_page.dart';
+import '../main.dart';
 
 class HomeCitoyenPage extends StatelessWidget {
   final Role role;

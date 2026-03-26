@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 // On importe le fichier qui contient la page de connexion
 import 'screens/auth_pages.dart';
+import 'screens/carte_page.dart';
 import 'screens/home_pages.dart';
 import 'models/role.dart';
 
@@ -8,21 +9,31 @@ void main() {
   runApp(const CitymoveApp());
 }
 
-class CitymoveApp extends StatelessWidget {
+class CitymoveApp extends StatefulWidget {
   const CitymoveApp({super.key});
+  @override
+    _CitymoveApp createState() => _CitymoveApp();
+}
+
+class _CitymoveApp extends State<CitymoveApp> {
+  int themeIndex = 1;
+  final List<ThemeData> theme = [ThemeData.dark(),ThemeData.light()];
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Citymove',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-        useMaterial3: true,
-      ),
+      theme: theme[themeIndex],
       home: const MyHomePage(title: 'Citymove'), // On lance l'application sur la page de Login
     );
   }
+
+  void _handleThemeChange(int? value) {
+    setState(() {
+          themeIndex = value!;
+    });
+}
 }
 
 class MyHomePage extends StatefulWidget {
@@ -36,9 +47,11 @@ class MyHomePage extends StatefulWidget {
 
 class _MyHomePageState extends State<MyHomePage> {
   int currentPageIndex = 0;
+  bool light=true;
+
+  
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
     return Scaffold(
       bottomNavigationBar: NavigationBar(
         onDestinationSelected: (int index) {
@@ -48,11 +61,23 @@ class _MyHomePageState extends State<MyHomePage> {
         },
         indicatorColor: const Color.fromARGB(255, 255, 61, 7),
         selectedIndex: currentPageIndex,
-        destinations: const <Widget>[/*
-          Padding(padding: EdgeInsets.all(20.0),child :Row(spacing:10,children: [
-            Icon(Icons.dark_mode),
-            Icon(Icons.light_mode)
-            ])),*/
+        destinations:  <Widget>[
+          Switch(
+            thumbIcon: WidgetStateProperty<Icon>.fromMap(<WidgetStatesConstraint, Icon>{
+            WidgetState.selected: Icon(Icons.light_mode),
+            WidgetState.any: Icon(Icons.dark_mode),
+            }),
+            value:light,
+            onChanged: (bool value) {
+            setState(() {
+              light = value;
+              /*if (value){
+                _handleThemeChange(1);
+              }else {
+                _handleThemeChange(0);
+              }*/
+            });}
+          ),
           NavigationDestination(
             selectedIcon: Icon(Icons.home),
             icon: Badge(child: Icon(Icons.home)),
@@ -70,9 +95,9 @@ class _MyHomePageState extends State<MyHomePage> {
       ),
       body: <Widget>[
         const LoginPage(),
-        const LoginPage()///Page Login pour redirection
-        ,
-        const LoginPage()/*CartePage()*////Page Carte
+        const HomeCitoyenPage(role : Role.habitant),///Page Login pour redirection
+        const MapScreen(),///Page Carte
+        const LoginPage()///pop up compte
       ][currentPageIndex],
     );
   }
