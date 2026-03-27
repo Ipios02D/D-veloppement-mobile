@@ -3,7 +3,8 @@ import '../models/role.dart';
 import 'home_pages.dart';
 
 class LoginPage extends StatelessWidget {
-  const LoginPage({super.key});
+  final Function(int) onNavigate;
+  LoginPage({super.key,required this.onNavigate});
 
   @override
   Widget build(BuildContext context) {
@@ -44,8 +45,8 @@ class LoginPage extends StatelessWidget {
 
   void _loginAs(BuildContext context, Role role) {
     Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) {
-      if (role == Role.mairie) return const HomeMairiePage();
-      return HomeCitoyenPage(role: role);
+      if (role == Role.mairie) return  HomeMairiePage(onNavigate:onNavigate);
+      return HomeCitoyenPage(role: role,onNavigate:onNavigate);
     }));
   }
 }

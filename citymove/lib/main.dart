@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'screens/auth_pages.dart';
 import 'screens/carte_page.dart';
 import 'screens/home_pages.dart';
+import 'screens/news_pages.dart';
+import 'screens/votes_pages.dart';
 import 'models/role.dart';
 
 void main() {
@@ -12,12 +14,20 @@ void main() {
 class CitymoveApp extends StatefulWidget {
   const CitymoveApp({super.key});
   @override
-    _CitymoveApp createState() => _CitymoveApp();
+  _CitymoveApp createState() => _CitymoveApp();
 }
 
 class _CitymoveApp extends State<CitymoveApp> {
   int themeIndex = 1;
+  int currentIndex=1;
   final List<ThemeData> theme = [ThemeData.dark(),ThemeData.light()];
+
+  void toggleTheme(bool isLight,int index) {
+    setState(() {
+      themeIndex = isLight ? 1 : 0;
+      currentIndex=index;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -25,42 +35,44 @@ class _CitymoveApp extends State<CitymoveApp> {
       title: 'Citymove',
       debugShowCheckedModeBanner: false,
       theme: theme[themeIndex],
-      home: const MyHomePage(title: 'Citymove'), // On lance l'application sur la page de Login
+      home: MyHomePage(
+        title: 'Citymove',
+        onThemeChanged: toggleTheme,
+        currentPageIndex: currentIndex,), // On lance l'application sur la page de Login
     );
   }
-
-  void _handleThemeChange(int? value) {
-    setState(() {
-          themeIndex = value!;
-    });
-}
 }
 
 class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
+  MyHomePage({super.key, required this.title, required this.onThemeChanged, required this.currentPageIndex});
 
   final String title;
+  final Function(bool,int) onThemeChanged;
+  int currentPageIndex;
 
   @override
   State<MyHomePage> createState() => _MyHomePageState();
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  int currentPageIndex = 0;
   bool light=true;
 
-  
+  void changePage(int index) {
+  setState(() {
+    widget.currentPageIndex = index;
+  });
+  }
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       bottomNavigationBar: NavigationBar(
         onDestinationSelected: (int index) {
           setState(() {
-            currentPageIndex = index;
+            widget.currentPageIndex = index;
           });
         },
         indicatorColor: const Color.fromARGB(255, 255, 61, 7),
-        selectedIndex: currentPageIndex,
+        selectedIndex: widget.currentPageIndex <= 3 ? widget.currentPageIndex : 0,
         destinations:  <Widget>[
           Switch(
             thumbIcon: WidgetStateProperty<Icon>.fromMap(<WidgetStatesConstraint, Icon>{
@@ -71,12 +83,8 @@ class _MyHomePageState extends State<MyHomePage> {
             onChanged: (bool value) {
             setState(() {
               light = value;
-              /*if (value){
-                _handleThemeChange(1);
-              }else {
-                _handleThemeChange(0);
-              }*/
-            });}
+            });
+            widget.onThemeChanged(value,widget.currentPageIndex);}
           ),
           NavigationDestination(
             selectedIcon: Icon(Icons.home),
@@ -88,17 +96,19 @@ class _MyHomePageState extends State<MyHomePage> {
             label: 'Carte',
           ),
           NavigationDestination(
-            icon: Badge( child: Icon(Icons.menu)),
-            label: 'Mon compte',
+            icon: Badge( child: Icon(Icons.door_back_door)),
+            label: 'Se déconnecter',
           ),
         ],
       ),
       body: <Widget>[
-        const LoginPage(),
-        const HomeCitoyenPage(role : Role.habitant),///Page Login pour redirection
+        LoginPage(onNavigate: changePage),
+        HomeCitoyenPage(role : Role.habitant,onNavigate: changePage),///Page Login pour redirection
         const MapScreen(),///Page Carte
-        const LoginPage()///pop up compte
-      ][currentPageIndex],
+        LoginPage(onNavigate: changePage),///pop up compte
+        const NewsPage(role : Role.habitant),
+        const VotesPage(role : Role.habitant),
+      ][widget.currentPageIndex],
     );
   }
 }

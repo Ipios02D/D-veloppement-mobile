@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import '../models/role.dart';
+import '../main.dart';
 
 class VotesPage extends StatelessWidget {
   final Role role;
   const VotesPage({super.key, required this.role});
-
+  
   @override
   Widget build(BuildContext context) {
     return Scaffold(

@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import '../models/role.dart';
+import '../main.dart';
 
 class NewsPage extends StatefulWidget {
   final Role role;
-  const NewsPage({super.key, required this.role});
+
+  const NewsPage({super.key, required this.role,});
 
   @override
   State<NewsPage> createState() => _NewsPageState();
