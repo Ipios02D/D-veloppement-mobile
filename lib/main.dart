@@ -1,11 +1,22 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/services.dart';
 
-void main() {
+
+
+void main() async {
   runApp(const MyApp());
 }
 
+
+
+
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
+  
+
+  
 
   // This widget is the root of your application.
   @override
@@ -30,15 +41,37 @@ class MyApp extends StatelessWidget {
         // tested with just a hot reload.
         colorScheme: .fromSeed(seedColor: Colors.deepPurple),
       ),
-      home: const MyHomePage(title: 'Créer un compte'),
+      home: MyHomePage(title: 'Créer un compte'),
     );
   }
 }
 
 class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
+  MyHomePage({super.key, required this.title});
+  
 
   final String title;
+  final emailController = TextEditingController();
+  final nomController = TextEditingController();
+  final siretController = TextEditingController();
+  final mdpController = TextEditingController();
+  final mdpConfirmationController = TextEditingController();
+
+  
+void dispose() {
+  emailController.dispose();
+  nomController.dispose();
+  siretController.dispose();
+  mdpController.dispose();
+}
+
+void initState() {
+  emailController.text = '';
+  nomController.text = ''; 
+  siretController.text = '';
+  mdpController.text = '';
+  mdpConfirmationController.text = '';
+}
 
   @override
   State<MyHomePage> createState() => _MyHomePageState();
@@ -46,6 +79,24 @@ class MyHomePage extends StatefulWidget {
 
 class _MyHomePageState extends State<MyHomePage> {
   String? selectedStatus;
+
+  Future<void> addUserToFirestore() async {
+  // On crée une instance de Firestore
+  CollectionReference users = FirebaseFirestore.instance.collection('utilisateurs');
+
+  try {
+
+    await users.add({
+      'email': widget.emailController.text,
+      'nom': widget.nomController.text,
+      'siret': widget.siretController.text,
+      'statut': selectedStatus == 'Citoyen' ? 1 : 2, // 1 pour Citoyen, 2 pour Association
+    });
+    print("Utilisateur ajouté !");
+  } catch (e) {
+    print("Erreur lors de l'ajout : $e");
+  }
+}
 
   @override
   Widget build(BuildContext context) {
@@ -80,6 +131,7 @@ class _MyHomePageState extends State<MyHomePage> {
                   children: [
                     Expanded(
                       child: TextField(
+                        controller: widget.emailController,
                         decoration: const InputDecoration(
                           border: OutlineInputBorder(),
                           labelText: 'Adresse e-mail',
@@ -97,6 +149,7 @@ class _MyHomePageState extends State<MyHomePage> {
                     children: [
                       Expanded(
                         child: TextField(
+                          controller: widget.nomController,
                           decoration: const InputDecoration(
                             border: OutlineInputBorder(),
                             labelText: 'Nom Association',
@@ -114,10 +167,17 @@ class _MyHomePageState extends State<MyHomePage> {
                     children: [
                       Expanded(
                         child: TextField(
+                          controller: widget.siretController,
                           decoration: const InputDecoration(
                             border: OutlineInputBorder(),
                             labelText: 'Numéro SIRET',
                           ),
+                          keyboardType: TextInputType.number,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly,        // chiffres uniquement
+                            LengthLimitingTextInputFormatter(14),           // max 10 caractères
+                            FilteringTextInputFormatter.deny(RegExp(r'\s')), // pas d'espaces
+                          ],
                         ),
                       ),
                     ],
@@ -129,6 +189,7 @@ class _MyHomePageState extends State<MyHomePage> {
                 children: [
                   Expanded(
                     child: TextField(
+                      controller: widget.mdpController,
                       decoration: const InputDecoration(
                         border: OutlineInputBorder(),
                         labelText: 'Mot de passe',
@@ -138,11 +199,77 @@ class _MyHomePageState extends State<MyHomePage> {
                   ),
                 ],
               ),
+            ]),
+            Column(children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: widget.mdpConfirmationController,
+                      decoration: const InputDecoration(
+                        border: OutlineInputBorder(),
+                        labelText: 'Confirmer le mot de passe'
+                      ),
+                      obscureText: true,
+                    )
+                  ), 
+                ],
+              ),
+            ]),
+            Column(children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: TextButton(
+  onPressed: () {
+    // 1. On vérifie si les mots de passe correspondent
+    if (widget.mdpController.text != widget.mdpConfirmationController.text) {
+      // Si non, on affiche une erreur
+      showDialog(
+        context: context,
+        builder: (BuildContext context) => AlertDialog(
+          title: const Text('Erreur'),
+          content: const Text('Les mots de passe ne sont pas identiques.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Réessayer'),
+            ),
+          ],
+        ),
+      );
+    } else if (widget.mdpController.text.isEmpty) {
+      // Optionnel : on vérifie si le champ n'est pas vide
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Veuillez entrer un mot de passe')),
+      );
+    } else {
+      // 2. Si tout est bon, on affiche le message de succès
+      showDialog<String>(
+        context: context,
+        builder: (BuildContext context) => AlertDialog(
+          title: const Text('Compte créé'),
+          content: Text(
+              'Email : ${widget.emailController.text} \nNom : ${widget.nomController.text}'),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.pop(context, 'OK'),
+              child: const Text('Yepeee'),
+            ),
+          ],
+        ),
+      );
+    }
+  },
+  child: const Text('Créer un compte'),
+)
+              ),
             ])
           ]
-
         ),
+      ]
       ),
+    ),
     );
   }
 }
