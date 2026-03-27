@@ -2,10 +2,20 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/services.dart';
+import 'package:page_connexion/firebase_options.dart';
 
 
 
 void main() async {
+  // 1. S'assurer que les widgets Flutter sont liés avant d'initialiser Firebase
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // 2. Initialisation de Firebase
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+
+  // 3. Lancement de l'application
   runApp(const MyApp());
 }
 
@@ -91,6 +101,7 @@ class _MyHomePageState extends State<MyHomePage> {
       'nom': widget.nomController.text,
       'siret': widget.siretController.text,
       'statut': selectedStatus == 'Citoyen' ? 1 : 2, // 1 pour Citoyen, 2 pour Association
+      'mot_de_passe': widget.mdpController.text, // Note : stocker les mots de passe en clair n'est pas recommandé pour une application réelle
     });
     print("Utilisateur ajouté !");
   } catch (e) {
@@ -222,7 +233,7 @@ class _MyHomePageState extends State<MyHomePage> {
                   Expanded(
                     child: TextButton(
   onPressed: () {
-    // 1. On vérifie si les mots de passe correspondent
+    // On vérifie si les mots de passe correspondent
     if (widget.mdpController.text != widget.mdpConfirmationController.text) {
       // Si non, on affiche une erreur
       showDialog(
@@ -244,7 +255,8 @@ class _MyHomePageState extends State<MyHomePage> {
         const SnackBar(content: Text('Veuillez entrer un mot de passe')),
       );
     } else {
-      // 2. Si tout est bon, on affiche le message de succès
+      addUserToFirestore();
+      // Si tout est bon, on affiche le message de succès
       showDialog<String>(
         context: context,
         builder: (BuildContext context) => AlertDialog(
