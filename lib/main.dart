@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/services.dart';
 import 'package:page_connexion/firebase_options.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 
 
@@ -95,17 +96,33 @@ class _MyHomePageState extends State<MyHomePage> {
   CollectionReference users = FirebaseFirestore.instance.collection('utilisateurs');
 
   try {
+    // 2. Création du compte dans Firebase Auth
+    UserCredential userCredential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
+      email: widget.emailController.text.trim(),
+      password: widget.mdpController.text,
+    );
 
-    await users.add({
-      'email': widget.emailController.text,
+    // 3. Récupération de l'UID généré par Firebase
+    String uid = userCredential.user!.uid;
+
+    // 4. Enregistrement des données supplémentaires dans Firestore
+    await FirebaseFirestore.instance.collection('utilisateurs').doc(uid).set({
+      'uid': uid,
+      'email': widget.emailController.text.trim(),
       'nom': widget.nomController.text,
-      'siret': widget.siretController.text,
-      'statut': selectedStatus == 'Citoyen' ? 1 : 2, // 1 pour Citoyen, 2 pour Association
-      'mot_de_passe': widget.mdpController.text, // Note : stocker les mots de passe en clair n'est pas recommandé pour une application réelle
+      'siret': selectedStatus == 'Association' ? widget.siretController.text : null,
+      'statut': selectedStatus,
+      'date_creation': FieldValue.serverTimestamp(),
     });
-    print("Utilisateur ajouté !");
+
+    // Succès !
+    print("Utilisateur créé avec succès dans Auth et Firestore");
+
+  } on FirebaseAuthException catch (e) {
+    // Gestion des erreurs spécifiques à Firebase (email déjà utilisé, mdp trop court...)
+    print("Erreur Auth: ${e.message}");
   } catch (e) {
-    print("Erreur lors de l'ajout : $e");
+    print("Erreur générale: $e");
   }
 }
 
@@ -249,12 +266,18 @@ class _MyHomePageState extends State<MyHomePage> {
           ],
         ),
       );
+    } else if (widget.mdpController.text.length < 6) {
+      // Optionnel : on vérifie si le champ n'est pas vide
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Le mot de passe doit contenir au moins 6 caractères')),
+      );
     } else if (widget.mdpController.text.isEmpty) {
       // Optionnel : on vérifie si le champ n'est pas vide
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Veuillez entrer un mot de passe')),
       );
-    } else {
+    }
+    else {
       addUserToFirestore();
       // Si tout est bon, on affiche le message de succès
       showDialog<String>(
