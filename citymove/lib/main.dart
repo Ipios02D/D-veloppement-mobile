@@ -45,8 +45,8 @@ class _CitymoveAppState extends State<CitymoveApp> {
 
       // On passe les paramètres du thème à notre première page (LoginPage)
       home: LoginPage(
-        isDarkMode: _themeMode == ThemeMode.dark,
-        onThemeChanged: _toggleTheme,
+        //isDarkMode: _themeMode == ThemeMode.dark,
+        //onThemeChanged: _toggleTheme,
       ),
     );
   }
