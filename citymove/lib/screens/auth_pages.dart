@@ -5,6 +5,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/role.dart';
 import 'home_pages.dart';
 
+class LoginPage extends StatelessWidget {
+  final Function(int,Role) onNavigate;
+  LoginPage({super.key,required this.onNavigate});
 // --- PAGE DE CONNEXION ---
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -65,7 +68,7 @@ class _LoginPageState extends State<LoginPage> {
               child: const Text('Se connecter'),
             ),
             TextButton(
-              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RegisterChoicePage())),
+              onPressed: () => onNavigate(6,Role.habitant),
               child: const Text('Créer un compte'),
             ),
             const Divider(height: 40),
@@ -87,11 +90,16 @@ class _LoginPageState extends State<LoginPage> {
       ),
     );
   }
+
+  void _loginAs(BuildContext context, Role role) {
+      onNavigate(1,role);
+  }
 }
 
 // --- CHOIX DE CRÉATION DE COMPTE ---
 class RegisterChoicePage extends StatelessWidget {
-  const RegisterChoicePage({super.key});
+  final Function(int,Role) onNavigate;
+  const RegisterChoicePage({super.key,required this.onNavigate});
 
   @override
   Widget build(BuildContext context) {
@@ -103,12 +111,12 @@ class RegisterChoicePage extends StatelessWidget {
           children: [
             ElevatedButton.icon(
               icon: const Icon(Icons.person), label: const Text('Je suis un Habitant'),
-              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RegisterHabitantPage())),
+              onPressed: () => onNavigate(7,Role.habitant),
             ),
             const SizedBox(height: 16),
             ElevatedButton.icon(
               icon: const Icon(Icons.group), label: const Text('Je suis une Association'),
-              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RegisterAssoPage())),
+              onPressed: () => onNavigate(8,Role.association),
             ),
           ],
         ),

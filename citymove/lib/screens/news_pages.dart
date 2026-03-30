@@ -3,12 +3,14 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/role.dart';
+import '../main.dart';
 import '../models/tag.dart';
 import 'event_details_popup.dart';
 
 class NewsPage extends StatefulWidget {
   final Role role;
-  const NewsPage({super.key, required this.role});
+
+  const NewsPage({super.key, required this.role,});
 
   @override
   State<NewsPage> createState() => _NewsPageState();

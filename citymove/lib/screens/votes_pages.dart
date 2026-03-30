@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/role.dart';
+import '../main.dart';
 
 class VotesPage extends StatelessWidget {
   final Role role;
