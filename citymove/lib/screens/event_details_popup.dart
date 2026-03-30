@@ -44,7 +44,9 @@ class _EventDetailsPopupState extends State<EventDetailsPopup> {
     String description = widget.eventData['description'] ?? '';
     String lieu = widget.eventData['lieu'] ?? '';
     String dateEvent = widget.eventData['date_event'] ?? '';
-    String organisateur = widget.eventData['createur'] ?? 'Inconnu';
+
+    // --- CORRECTION ICI : On utilise bien 'createur_nom' ---
+    String organisateurNom = widget.eventData['createur_nom'] ?? 'Inconnu';
 
     Tag? eventTag = getTagFromString(widget.eventData['tag']);
 
@@ -103,10 +105,10 @@ class _EventDetailsPopupState extends State<EventDetailsPopup> {
             Row(children: [const Icon(Icons.location_on, color: Colors.redAccent, size: 20), const SizedBox(width: 12), Text(lieu, style: const TextStyle(fontSize: 16))]),
           ],
 
-          // Affichage de l'organisateur
-          if (organisateur.isNotEmpty) ...[
+          // Affichage de l'organisateur (utilisation de la nouvelle variable)
+          if (organisateurNom.isNotEmpty && organisateurNom != 'Inconnu') ...[
             const SizedBox(height: 12),
-            Row(children: [const Icon(Icons.person, color: Colors.blueGrey, size: 20), const SizedBox(width: 12), Text("Organisé par : $organisateur", style: const TextStyle(fontSize: 14, fontStyle: FontStyle.italic))]),
+            Row(children: [const Icon(Icons.person, color: Colors.blueGrey, size: 20), const SizedBox(width: 12), Text("Organisé par : $organisateurNom", style: const TextStyle(fontSize: 14, fontStyle: FontStyle.italic))]),
           ],
 
           const SizedBox(height: 24),

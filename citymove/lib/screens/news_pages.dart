@@ -57,12 +57,13 @@ class _NewsPageState extends State<NewsPage> {
               String lieu = data['lieu'] ?? '';
               String dateEvent = data['date_event'] ?? '';
               String tagString = data['tag'] ?? '';
-              String organisateur = data['createur'] ?? '';
+              String organisateurNom = data['createur_nom'] ?? 'Inconnu';
+              String organisateurId = data['createur_id'] ?? data['createur'] ?? '';
 
               Tag? eventTag = getTagFromString(tagString);
 
-              // Correction logique suppression
-              bool peutSupprimer = (widget.role == Role.mairie) || (organisateur == currentUserId);
+
+              bool peutSupprimer = (widget.role == Role.mairie) || (organisateurId == currentUserId);
 
               return Card(
                 margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -73,8 +74,8 @@ class _NewsPageState extends State<NewsPage> {
                     children: [
                       const SizedBox(height: 4),
                       if (dateEvent.isNotEmpty) Text('Date: $dateEvent'),
-                      if (organisateur.isNotEmpty)
-                        Text('Organisateur : $organisateur', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                      if (organisateurNom.isNotEmpty)
+                        Text('Organisateur : $organisateurNom', style: const TextStyle(fontSize: 12, color: Colors.grey)),
                       if (lieu.isNotEmpty) Text('Lieu: $lieu'),
                       const SizedBox(height: 8),
                       if (eventTag != null)
@@ -181,7 +182,13 @@ class _NewsPageState extends State<NewsPage> {
                     onChanged: (v) => setModalState(() => compterParticipations = v)),
                 ElevatedButton(
                   onPressed: () async {
-                    if (nomController.text.isNotEmpty) {
+                    if (nomController.text.isNotEmpty && dateController.text.isNotEmpty) {
+                      String organisateur = 'Inconnu';
+                      DocumentSnapshot userDoc = await FirebaseFirestore.instance.collection('utilisateurs').doc(currentUserId).get();
+
+                      if (userDoc.exists && userDoc.data().toString().contains('nom')) {
+                        organisateur = userDoc['nom'];
+                      }
                       await _db.collection('evenements').add({
                         'nom': nomController.text,
                         'date_event': dateController.text,
@@ -193,7 +200,8 @@ class _NewsPageState extends State<NewsPage> {
                         'compter_participations': compterParticipations,
                         'participants_ids': compterParticipations ? [] : [],
                         'date_creation': FieldValue.serverTimestamp(),
-                        'createur': currentUserId,
+                        'createur_id': currentUserId,
+                        'createur_nom': organisateur,
                       });
                       if (context.mounted) Navigator.pop(context);
                     }
@@ -210,7 +218,7 @@ class _NewsPageState extends State<NewsPage> {
   }
 }
 
-// --- PAGE DE DÉTAILS CORRIGÉE ---
+// --- PAGE DE DÉTAILS ---
 class EventDetailsPage extends StatelessWidget {
   final Role role;
   final String eventId;
