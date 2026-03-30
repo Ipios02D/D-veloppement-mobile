@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
-// On importe le fichier qui contient la page de connexion
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
+
+// Import de vos pages et de votre thème
 import 'screens/auth_pages.dart';
 import 'screens/carte_page.dart';
 import 'screens/home_pages.dart';
@@ -7,8 +10,13 @@ import 'screens/news_pages.dart';
 import 'screens/votes_pages.dart';
 import 'screens/admin_page.dart';
 import 'models/role.dart';
+import 'models/theme.dart'; // Fichier contenant CityTheme que nous allons créer
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
   runApp(const CitymoveApp());
 }
 
@@ -27,6 +35,21 @@ class _CitymoveApp extends State<CitymoveApp> {
     setState(() {
       themeIndex = isLight ? 1 : 0;
       currentIndex=index;
+    });
+  }
+
+  @override
+  State<CitymoveApp> createState() => _CitymoveAppState();
+}
+
+class _CitymoveAppState extends State<CitymoveApp> {
+  // Gestion de l'état du thème (Clair par défaut)
+  ThemeMode _themeMode = ThemeMode.light;
+
+  // Fonction pour basculer le thème
+  void _toggleTheme(bool isDark) {
+    setState(() {
+      _themeMode = isDark ? ThemeMode.dark : ThemeMode.light;
     });
   }
 
