@@ -10,45 +10,124 @@ import 'admin_page.dart';
 import '../main.dart';
 import 'package:http/http.dart' as http;
 
-class HomeMairiePage extends StatelessWidget {
-  final Function(int) onNavigate;
+class HomeMairiePage extends StatefulWidget {
+  final Function(int,Role) onNavigate;
   const HomeMairiePage({super.key,required this.onNavigate});
+
+  @override
+  State<HomeMairiePage> createState() => _HomeMairiePageState();
+}
+
+class _HomeMairiePageState extends State<HomeMairiePage> {
+  final PageController _pageController = PageController();
+  int _currentPage = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    // On garde l'animation du carousel d'images
+    Timer.periodic(const Duration(seconds: 4), (Timer timer) {
+      if (_currentPage < 3) {
+        _currentPage++;
+      } else {
+        _currentPage = 0;
+      }
+      if (_pageController.hasClients) {
+        _pageController.animateToPage(
+          _currentPage,
+          duration: const Duration(milliseconds: 350),
+          curve: Curves.easeIn,
+        );
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Tableau de Bord Mairie'), backgroundColor: Colors.deepPurple.shade200),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            ElevatedButton.icon(
-              icon: const Icon(Icons.event), label: const Text('Gérer les News / Événements'),
-              onPressed: () => onNavigate(4),
+      appBar: AppBar(
+        title: const Text('Accueil Mairie / Administration'),
+        backgroundColor: Colors.blueGrey, // Optionnel : pour différencier visuellement
+      ),
+      body: Column(
+        children: [
+          // --- PARTIE HAUT : Carousel d'images (Identique à Citoyen) ---
+          SizedBox(
+            height: 350,
+            child: PageView.builder(
+              controller: _pageController,
+              itemCount: 4,
+              itemBuilder: (context, index) {
+                return Image.asset(
+                  'ressources/$index.jpg',
+                  fit: BoxFit.fitWidth,
+                  alignment: const Alignment(0.0, 0.15),
+                );
+              },
             ),
-            const SizedBox(height: 16),
-            ElevatedButton.icon(
-              icon: const Icon(Icons.how_to_vote), label: const Text('Gérer les Votes'),
-              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const VotesPage(role: Role.mairie))),
+          ),
+
+          // --- PARTIE MILIEU : Espace vide ou message d'accueil (Pas de météo ici) ---
+          const Expanded(
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.location_city, size: 80, color: Colors.blueGrey),
+                  SizedBox(height: 10),
+                  Text(
+                    "Tableau de bord Mairie",
+                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.w500),
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: 16),
-            ElevatedButton.icon(
-              icon: const Icon(Icons.admin_panel_settings), label: const Text('Console d\'Administration'),
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.red.shade100),
-              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminConsolePage())),
+          ),
+
+          // --- PARTIE BAS : Navigation avec l'icône Admin au milieu ---
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 20),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                // Icone News
+                IconButton(
+                  icon: const Icon(Icons.newspaper, color: Colors.blue, size: 40),
+                  onPressed: () => widget.onNavigate(4,Role.mairie),
+                  ),
+                
+
+                // NOUVELLE Icone Paramètres (Admin) au centre
+                IconButton(
+                  icon: const Icon(Icons.admin_panel_settings_outlined, color: Color.fromARGB(255, 0, 0, 0), size: 45),
+                  onPressed: () => widget.onNavigate(9,Role.mairie),
+                ),
+
+                // Icone Votes
+                IconButton(
+                  icon: const Icon(Icons.how_to_vote_outlined, color: Colors.grey, size: 40),
+                  onPressed: () => widget.onNavigate(5,Role.mairie),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 }
 
 
+
 class HomeCitoyenPage extends StatefulWidget {
   final Role role;
-  final Function(int) onNavigate;
+  final Function(int,Role) onNavigate;
   const HomeCitoyenPage({super.key, required this.role,required this.onNavigate});
 
   @override
@@ -153,11 +232,11 @@ class _HomeCitoyenPageState extends State<HomeCitoyenPage> {
               children: [
                 IconButton(
                   icon: const Icon(Icons.newspaper, color: Colors.blue, size: 40),
-                  onPressed: () => widget.onNavigate(4),
+                  onPressed: () => widget.onNavigate(4,Role.habitant),
                 ),
                 IconButton(
                   icon: const Icon(Icons.how_to_vote_outlined, color: Colors.grey, size: 40),
-                  onPressed: () =>  widget.onNavigate(5)),
+                  onPressed: () =>  widget.onNavigate(5,Role.habitant)),
               ],
             ),
           ),

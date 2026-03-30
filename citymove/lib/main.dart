@@ -5,6 +5,7 @@ import 'screens/carte_page.dart';
 import 'screens/home_pages.dart';
 import 'screens/news_pages.dart';
 import 'screens/votes_pages.dart';
+import 'screens/admin_page.dart';
 import 'models/role.dart';
 
 void main() {
@@ -38,17 +39,19 @@ class _CitymoveApp extends State<CitymoveApp> {
       home: MyHomePage(
         title: 'Citymove',
         onThemeChanged: toggleTheme,
-        currentPageIndex: currentIndex,), // On lance l'application sur la page de Login
+        currentPageIndex: currentIndex,
+        role:Role.habitant), // On lance l'application sur la page de Login
     );
   }
 }
 
 class MyHomePage extends StatefulWidget {
-  MyHomePage({super.key, required this.title, required this.onThemeChanged, required this.currentPageIndex});
+  MyHomePage({super.key, required this.title, required this.onThemeChanged, required this.currentPageIndex,required this.role});
 
   final String title;
   final Function(bool,int) onThemeChanged;
   int currentPageIndex;
+  Role role;
 
   @override
   State<MyHomePage> createState() => _MyHomePageState();
@@ -57,9 +60,10 @@ class MyHomePage extends StatefulWidget {
 class _MyHomePageState extends State<MyHomePage> {
   bool light=true;
 
-  void changePage(int index) {
+  void changePage(int index,Role role) {
   setState(() {
     widget.currentPageIndex = index;
+    widget.role=role;
   });
   }
   @override
@@ -103,11 +107,15 @@ class _MyHomePageState extends State<MyHomePage> {
       ),
       body: <Widget>[
         LoginPage(onNavigate: changePage),
-        HomeCitoyenPage(role : Role.habitant,onNavigate: changePage),///Page Login pour redirection
+        widget.role== Role.mairie ? HomeMairiePage(onNavigate: changePage) : HomeCitoyenPage(role : widget.role,onNavigate: changePage),///Page Login pour redirection
         const MapScreen(),///Page Carte
-        LoginPage(onNavigate: changePage),///pop up compte
-        const NewsPage(role : Role.habitant),
-        const VotesPage(role : Role.habitant),
+        LoginPage(onNavigate: changePage),
+        NewsPage(role : widget.role),
+        VotesPage(role : widget.role),
+        RegisterChoicePage(onNavigate: changePage),
+        RegisterHabitantPage(),
+        RegisterAssoPage(),
+        AdminConsolePage()
       ][widget.currentPageIndex],
     );
   }
