@@ -27,6 +27,8 @@ Dans l'optique d'améliorer la qualité de vie urbaines pour tous, nous avons d�
 
 Un seconde partie de l'application permettra à la mairie et aux associations inscrites sur l'application de sonder la habitants afin d'obtenir des retours importants sur des évenements ou des sujets clé pour la municipalité.
 
+Notre application doit donc être ergonomique et intuitive car elle pourra être utilisé par 
+
 == Périmètre Technique 
 Afin de répondre au mieux à nos besoins, nous allons utiliser diverses solutions techniques.
 
@@ -34,6 +36,66 @@ Afin de répondre au mieux à nos besoins, nous allons utiliser diverses solutio
 - GitHub pour le partage du code et des documents : #link("https://github.com/Ipios02D/D-veloppement-mobile")
 - Notion pour la répartition des tâches 
 
+=== Technologies utilisé
+
+Le langage de proggramation flutter nous est imposé pour le développement de notre application.
+
+L'application que nous souhaitons concevoir devra utiliser de nombreuses données, tel que les emails et mot de passe des utilisateurs, ou encore les différents évenements affiché sur la carte. Nous allons donc devoir utiliser une Système de Gestion de Base de Données. Nous avons choisi *Firebase* pour notre projet car ce SGBD à été conçu pour une integration avec Flutter simple, et possède de nombreuses fonctionalités comme la gestion des authentifications integré, ou le hachage des mots de passe de manière automatique.
+
+
+
+= Conception
+Avant de nous lancer dans la proggramation de notre application, nous devons réaliser une maquette générale ainsi qu'un diagramme de notre base de données.
+
+== Maquette de l'application
+
+Afin d'avoir une idée claire sur le développement de notre application, nous avons creer une maquette (rudimentaire).
+Cette maquette nous permettra de savoir quoi proggramer et où, et aussi de nous répartir le travail de manière plus efficace.
+#image("shafoin-typst-template/assets/images/maquette.png")
+
+== Architecture de l'application 
+Maintenant que notre maquette est fin prête, nous pouvons nous lancer dans l'architecture technique de notre application.
+Le nombreux d'écrans différents étant conséquents, chaque page de l'application aura sont propre fichier dart. 
+
+Au delà d'avoir des proggrames plus propres et lisibles, nous pouvons nour répartir le travail de manière plus simple.
+
+Nous utiliserons alors une fonction spécialement conçu pour changer de page selon leurs index.
+
+== Schéma entité-relation
+Lors de la création d'une base de données, il est impératif de créer un schéma complet de la base de données, afin d'éviter des redondances, mais aussi pour pouvoir effectuer nos requêtes plus aisement sur nos différentes pages.
+
+
+Voici notre schéma entité-relation :
+
+#image("shafoin-typst-template/assets/images/BDD.drawio-1.png")
+
+#info("Veuillez noter que la table utilisateur à été modifié suite à l'implementation des fonctionnalitées d'authentification de Firebase")
+
+= Organisation du projet
+
+== Outils collaboratif
+Comme décrit plus tôt dans notre cahier des charges, nous avons utilisé plusieurs outils afin de collaborer plus efficacement.
+En effet, nous travaillons en groupe avec un nombre important de personnes (ici 4). Il est donc important de s'organiser afin d'avoir un cylce de développement le plus fluide possible.
+
+=== Notion 
+Pour la répartition des différentes tâches, nous avons utilisé l'outils Notion, qui nous permet de suivre les tâches en cours ou finis, et de mettre en place une deadline pour chaque tâche.
+
+=== Git et GitHub
+Pour sauvegarder et partager notre code, nous avons utilisé l'outis GitHub. Cet outil nous permet aussi de fusionner nos différents proggrammes et de récuperer ceux des autres à distance.
+Voici le GitHub que nous avons utilisé pour ce projet : #link("https://github.com/Ipios02D/D-veloppement-mobile")
+
+== Répartition des tâches
+Comme expliqué plus haut, notre application est composé de plusieurs pages qui seront affiché à tour de rôle.
+Nous pouvons donc nous répartir les différentes pages à développer. Ainsi nous pouvons tous travailler de manière indépendante et fusionner nos projets plus tard.
+Cela nous permet de nous organiser correctement et de pouvoir travailler en parallele, plutôt que d'attendre que certaines partie de notre projet soit finies pour continuer.
+
+= Mise en place des pages
+
+
+
+
+
+#pagebreak()
 === Titre 3
 
 ==== Titre 4
