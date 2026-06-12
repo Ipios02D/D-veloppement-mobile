@@ -5,12 +5,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/role.dart';
 import 'home_pages.dart';
 
-class LoginPage extends StatelessWidget {
-  final Function(int,Role) onNavigate;
-  LoginPage({super.key,required this.onNavigate});
-// --- PAGE DE CONNEXION ---
+
+
 class LoginPage extends StatefulWidget {
-  const LoginPage({super.key});
+  final Function(int,Role) onNavigate;
+  const LoginPage({super.key,required this.onNavigate});
 
   @override
   State<LoginPage> createState() => _LoginPageState();
@@ -36,10 +35,10 @@ class _LoginPageState extends State<LoginPage> {
       if (doc.exists && mounted) {
         String statut = doc['statut'];
         if (statut == 'Mairie') {
-          Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const HomeMairiePage()));
+          widget.onNavigate(1,Role.mairie);
         } else {
           Role userRole = statut == 'Association' ? Role.association : Role.habitant;
-          Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => HomeCitoyenPage(role: userRole)));
+          widget.onNavigate(1,userRole);
         }
       }
     } on FirebaseAuthException catch (e) {
@@ -68,7 +67,7 @@ class _LoginPageState extends State<LoginPage> {
               child: const Text('Se connecter'),
             ),
             TextButton(
-              onPressed: () => onNavigate(6,Role.habitant),
+              onPressed: () => widget.onNavigate(6,Role.habitant),
               child: const Text('Créer un compte'),
             ),
             const Divider(height: 40),
@@ -80,9 +79,9 @@ class _LoginPageState extends State<LoginPage> {
               alignment: WrapAlignment.center,
               spacing: 8,
               children: [
-                ActionChip(label: const Text('Habitant'), onPressed: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const HomeCitoyenPage(role: Role.habitant)))),
-                ActionChip(label: const Text('Association'), onPressed: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const HomeCitoyenPage(role: Role.association)))),
-                ActionChip(label: const Text('Mairie'), onPressed: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const HomeMairiePage()))),
+                ActionChip(label: const Text('Habitant'), onPressed: () => widget.onNavigate(1,Role.habitant)),
+                ActionChip(label: const Text('Association'), onPressed: () => widget.onNavigate(1,Role.association)),
+                ActionChip(label: const Text('Mairie'), onPressed: () => widget.onNavigate(1,Role.mairie)),
               ],
             )
           ],
@@ -92,7 +91,7 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   void _loginAs(BuildContext context, Role role) {
-      onNavigate(1,role);
+      widget.onNavigate(1,role);
   }
 }
 
@@ -104,7 +103,13 @@ class RegisterChoicePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Créer un compte')),
+      appBar: AppBar(
+        title: const Text('Créer un compte'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => onNavigate(0, Role.habitant), // Retour à LoginPage (index 0 ou selon votre Main)
+        ),
+      ),
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -127,7 +132,8 @@ class RegisterChoicePage extends StatelessWidget {
 
 // --- INSCRIPTION HABITANT ---
 class RegisterHabitantPage extends StatefulWidget {
-  const RegisterHabitantPage({super.key});
+  final Function(int, Role) onNavigate;
+  const RegisterHabitantPage({super.key, required this.onNavigate});
 
   @override
   State<RegisterHabitantPage> createState() => _RegisterHabitantPageState();
@@ -149,9 +155,22 @@ class _RegisterHabitantPageState extends State<RegisterHabitantPage> {
     super.dispose();
   }
 
+  bool _isDateValide(String dateStr) {
+    // Vérifie le format via Regex (JJ/MM/AAAA)
+    final dateRegex = RegExp(r'^(\d{2})/(\d{2})/(\d{4})$');
+    if (!dateRegex.hasMatch(dateStr)) return false;
+    return true;
+  }
+
   Future<void> _creerCompteHabitant() async {
-    // 1. Validation issue du code de votre camarade
-    if (mdpController.text != mdpConfirmationController.text) {
+    // 1. Validations
+    if (emailController.text.isEmpty || dateNaissanceController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Veuillez remplir tous les champs.')));
+      return;
+    } else if (!_isDateValide(dateNaissanceController.text)) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Veuillez entrer une date de naissance valide (JJ/MM/AAAA).')));
+      return;
+    } else if (mdpController.text != mdpConfirmationController.text) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Les mots de passe ne sont pas identiques.')));
       return;
     } else if (mdpController.text.length < 6) {
@@ -200,7 +219,13 @@ class _RegisterHabitantPageState extends State<RegisterHabitantPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Inscription Habitant')),
+      appBar: AppBar(
+        title: const Text('Inscription Habitant'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => widget.onNavigate(0, Role.habitant), // Retour à LoginPage (index 0 ou selon votre Main)
+        ),
+      ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -221,7 +246,8 @@ class _RegisterHabitantPageState extends State<RegisterHabitantPage> {
 
 // --- INSCRIPTION ASSOCIATION ---
 class RegisterAssoPage extends StatefulWidget {
-  const RegisterAssoPage({super.key});
+  final Function(int, Role) onNavigate;
+  const RegisterAssoPage({super.key, required this.onNavigate});
 
   @override
   State<RegisterAssoPage> createState() => _RegisterAssoPageState();
@@ -263,7 +289,7 @@ class _RegisterAssoPageState extends State<RegisterAssoPage> {
         password: mdpController.text,
       );
 
-      // 3. Enregistrement Firestore (avec le SIRET de votre camarade)
+      // 3. Enregistrement Firestore
       String uid = userCredential.user!.uid;
       await FirebaseFirestore.instance.collection('utilisateurs').doc(uid).set({
         'uid': uid,
@@ -299,7 +325,13 @@ class _RegisterAssoPageState extends State<RegisterAssoPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Inscription Association')),
+      appBar: AppBar(
+          title: const Text('Inscription Association'),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () => widget.onNavigate(0, Role.association), // Retour à LoginPage (index 0 ou selon votre Main)
+          ),
+      ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
