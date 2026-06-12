@@ -155,20 +155,26 @@ class _RegisterHabitantPageState extends State<RegisterHabitantPage> {
     super.dispose();
   }
 
-  bool _isDateValide(String dateStr) {
-    // Vérifie le format via Regex (JJ/MM/AAAA)
-    final dateRegex = RegExp(r'^(\d{2})/(\d{2})/(\d{4})$');
-    if (!dateRegex.hasMatch(dateStr)) return false;
-    return true;
+  Future<void> _selectDate(BuildContext context) async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: DateTime(2000), // Date par défaut (ex: né en 2000)
+      firstDate: DateTime(1920), // Date la plus ancienne
+      lastDate: DateTime.now(), // Pas de date dans le futur
+    );
+    if (picked != null) {
+      setState(() {
+        // Formate la date en JJ/MM/AAAA
+        dateNaissanceController.text =
+            "${picked.day.toString().padLeft(2, '0')}/${picked.month.toString().padLeft(2, '0')}/${picked.year}";
+      });
+    }
   }
 
   Future<void> _creerCompteHabitant() async {
     // 1. Validations
     if (emailController.text.isEmpty || dateNaissanceController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Veuillez remplir tous les champs.')));
-      return;
-    } else if (!_isDateValide(dateNaissanceController.text)) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Veuillez entrer une date de naissance valide (JJ/MM/AAAA).')));
       return;
     } else if (mdpController.text != mdpConfirmationController.text) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Les mots de passe ne sont pas identiques.')));
@@ -231,7 +237,16 @@ class _RegisterHabitantPageState extends State<RegisterHabitantPage> {
         children: [
           TextField(controller: emailController, decoration: const InputDecoration(labelText: 'E-mail', border: OutlineInputBorder())),
           const SizedBox(height: 16),
-          TextField(controller: dateNaissanceController, decoration: const InputDecoration(labelText: 'Date de naissance (JJ/MM/AAAA)', border: OutlineInputBorder())),
+          TextField(
+            controller: dateNaissanceController,
+            readOnly: true, // Empêche d'ouvrir le clavier
+            onTap: () => _selectDate(context), // Ouvre le calendrier
+            decoration: const InputDecoration(
+              labelText: 'Date de naissance *',
+              suffixIcon: Icon(Icons.calendar_today), // Icône pour indiquer qu'on peut cliquer
+              border: OutlineInputBorder(),
+            ),
+          ),
           const SizedBox(height: 16),
           TextField(controller: mdpController, decoration: const InputDecoration(labelText: 'Mot de passe', border: OutlineInputBorder()), obscureText: true),
           const SizedBox(height: 16),

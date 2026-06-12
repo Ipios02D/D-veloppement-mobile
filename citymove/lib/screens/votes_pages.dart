@@ -17,9 +17,11 @@ class VotesPage extends StatelessWidget {
       appBar: AppBar(title: const Text('Votes Citoyens')),
       // --- STREAMBUILDER POUR LIRE LES VOTES EN TEMPS RÉEL ---
       body: StreamBuilder<QuerySnapshot>(
-        stream: _db.collection('votes').orderBy('date_creation', descending: true).snapshots(),
+        stream: _db.collection('votes').orderBy(
+            'date_creation', descending: true).snapshots(),
         builder: (context, snapshot) {
-          if (snapshot.hasError) return const Center(child: Text("Erreur de chargement des votes"));
+          if (snapshot.hasError)
+            return const Center(child: Text("Erreur de chargement des votes"));
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
@@ -27,7 +29,8 @@ class VotesPage extends StatelessWidget {
           final docs = snapshot.data!.docs;
 
           if (docs.isEmpty) {
-            return const Center(child: Text("Aucun vote en cours pour le moment."));
+            return const Center(
+                child: Text("Aucun vote en cours pour le moment."));
           }
 
           return ListView.builder(
@@ -36,17 +39,26 @@ class VotesPage extends StatelessWidget {
               var vote = docs[index];
               Map<String, dynamic> data = vote.data() as Map<String, dynamic>;
 
-              String nom = data.containsKey('nom') ? data['nom'] : 'Sondage sans nom';
-              String dateFin = data.containsKey('dateFin') ? data['dateFin'] : 'Inconnue';
-              int totalVotes = (data['pour'] ?? 0) + (data['contre'] ?? 0) + (data['abstention'] ?? 0);
+              String nom = data.containsKey('nom')
+                  ? data['nom']
+                  : 'Sondage sans nom';
+              String dateFin = data.containsKey('dateFin')
+                  ? data['dateFin']
+                  : 'Inconnue';
+              int totalVotes = (data['pour'] ?? 0) + (data['contre'] ?? 0) +
+                  (data['abstention'] ?? 0);
 
               return Card(
                 margin: const EdgeInsets.all(8),
                 child: ListTile(
-                  title: Text(nom, style: const TextStyle(fontWeight: FontWeight.bold)),
-                  subtitle: Text('Total des votes: $totalVotes\nFinit le: $dateFin'),
+                  title: Text(
+                      nom, style: const TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: Text(
+                      'Total des votes: $totalVotes\nFinit le: $dateFin'),
                   isThreeLine: true,
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => VoteDetailsPage(voteId: vote.id, voteData: data))),
+                  onTap: () =>
+                      Navigator.push(context, MaterialPageRoute(builder: (_) =>
+                          VoteDetailsPage(voteId: vote.id, voteData: data))),
                   trailing: role == Role.mairie
                       ? IconButton(
                       icon: const Icon(Icons.delete, color: Colors.red),
@@ -71,80 +83,160 @@ class VotesPage extends StatelessWidget {
   void _showDeleteConfirm(BuildContext context, String documentId) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Confirmer la suppression'),
-        content: const Text('Voulez-vous vraiment supprimer ce vote ? Toute progression sera perdue.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Annuler')),
-          TextButton(
-              onPressed: () {
-                _db.collection('votes').doc(documentId).delete();
-                Navigator.pop(context);
-              },
-              child: const Text('Supprimer', style: TextStyle(color: Colors.red))
+      builder: (context) =>
+          AlertDialog(
+            title: const Text('Confirmer la suppression'),
+            content: const Text(
+                'Voulez-vous vraiment supprimer ce vote ? Toute progression sera perdue.'),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(context),
+                  child: const Text('Annuler')),
+              TextButton(
+                  onPressed: () {
+                    _db.collection('votes').doc(documentId).delete();
+                    Navigator.pop(context);
+                  },
+                  child: const Text(
+                      'Supprimer', style: TextStyle(color: Colors.red))
+              ),
+            ],
           ),
-        ],
-      ),
     );
   }
 
   void _showCreateVotePopup(BuildContext context) {
-    // Contrôleurs pour les champs de création
     final nomController = TextEditingController();
     final descController = TextEditingController();
     final ageMinController = TextEditingController();
     final ageMaxController = TextEditingController();
     final quorumController = TextEditingController();
-    final dateFinController = TextEditingController(); // Idéalement, utilisez un DatePicker plus tard
+    final dateFinController = TextEditingController();
+
+    // Fonction interne pour choisir la date
+    Future<void> _selectDate(BuildContext context,
+        StateSetter setModalState) async {
+      final DateTime? picked = await showDatePicker(
+        context: context,
+        initialDate: DateTime.now().add(const Duration(days: 7)),
+        // Par défaut dans une semaine
+        firstDate: DateTime.now(),
+        // On ne peut pas finir un vote dans le passé
+        lastDate: DateTime(2101),
+      );
+      if (picked != null) {
+        setModalState(() {
+          // Formatage JJ/MM/AAAA
+          dateFinController.text =
+          "${picked.day.toString().padLeft(2, '0')}/${picked.month
+              .toString()
+              .padLeft(2, '0')}/${picked.year}";
+        });
+      }
+    }
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      builder: (context) => Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, left: 16, right: 16, top: 16),
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text('Créer un Vote', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-              TextField(controller: nomController, decoration: const InputDecoration(labelText: 'Nom du vote')),
-              TextField(controller: descController, decoration: const InputDecoration(labelText: 'Description'), maxLines: 2),
-              Row(
-                children: [
-                  Expanded(child: TextField(controller: ageMinController, decoration: const InputDecoration(labelText: 'Âge Min'), keyboardType: TextInputType.number)),
-                  const SizedBox(width: 16),
-                  Expanded(child: TextField(controller: ageMaxController, decoration: const InputDecoration(labelText: 'Âge Max'), keyboardType: TextInputType.number)),
-                ],
-              ),
-              TextField(controller: quorumController, decoration: const InputDecoration(labelText: 'Quorum requis (%)'), keyboardType: TextInputType.number),
-              TextField(controller: dateFinController, decoration: const InputDecoration(labelText: 'Date de fin (JJ/MM/AAAA)')),
-              const SizedBox(height: 16),
-              ElevatedButton(
-                  onPressed: () async {
-                    if (nomController.text.isNotEmpty) {
-                      await _db.collection('votes').add({
-                        'nom': nomController.text,
-                        'description': descController.text,
-                        'ageMin': int.tryParse(ageMinController.text) ?? 0,
-                        'ageMax': int.tryParse(ageMaxController.text) ?? 120,
-                        'quorum': int.tryParse(quorumController.text) ?? 0,
-                        'dateFin': dateFinController.text,
-                        'date_creation': FieldValue.serverTimestamp(),
-                        // On initialise les compteurs de vote à 0
-                        'pour': 0,
-                        'contre': 0,
-                        'abstention': 0,
-                      });
-                      if (context.mounted) Navigator.pop(context);
-                    }
-                  },
-                  child: const Text('Créer le vote')
-              ),
-              const SizedBox(height: 16),
-            ],
+      builder: (context) =>
+          StatefulBuilder( // Utilisation de StatefulBuilder pour mettre à jour la date dans la popup
+            builder: (context, setModalState) =>
+                Padding(
+                  padding: EdgeInsets.only(
+                      bottom: MediaQuery
+                          .of(context)
+                          .viewInsets
+                          .bottom,
+                      left: 16, right: 16, top: 16),
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text('Créer un Vote', style: TextStyle(
+                            fontSize: 20, fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 15),
+                        TextField(controller: nomController,
+                            decoration: const InputDecoration(
+                                labelText: 'Nom du vote',
+                                border: OutlineInputBorder())),
+                        const SizedBox(height: 10),
+                        TextField(controller: descController,
+                            decoration: const InputDecoration(
+                                labelText: 'Description',
+                                border: OutlineInputBorder()),
+                            maxLines: 2),
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            Expanded(child: TextField(
+                                controller: ageMinController,
+                                decoration: const InputDecoration(
+                                    labelText: 'Âge Min',
+                                    border: OutlineInputBorder()),
+                                keyboardType: TextInputType.number)),
+                            const SizedBox(width: 16),
+                            Expanded(child: TextField(
+                                controller: ageMaxController,
+                                decoration: const InputDecoration(
+                                    labelText: 'Âge Max',
+                                    border: OutlineInputBorder()),
+                                keyboardType: TextInputType.number)),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        TextField(controller: quorumController,
+                            decoration: const InputDecoration(
+                                labelText: 'Quorum requis (%)',
+                                border: OutlineInputBorder()),
+                            keyboardType: TextInputType.number),
+                        const SizedBox(height: 10),
+
+                        // --- CHAMP DATE MODIFIÉ ---
+                        TextField(
+                          controller: dateFinController,
+                          readOnly: true, // Empêche la saisie clavier
+                          onTap: () => _selectDate(context, setModalState),
+                          decoration: const InputDecoration(
+                            labelText: 'Date de fin du vote *',
+                            suffixIcon: Icon(Icons.calendar_today),
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+
+                        const SizedBox(height: 20),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton(
+                              onPressed: () async {
+                                if (nomController.text.isNotEmpty &&
+                                    dateFinController.text.isNotEmpty) {
+                                  await _db.collection('votes').add({
+                                    'nom': nomController.text,
+                                    'description': descController.text,
+                                    'ageMin': int.tryParse(
+                                        ageMinController.text) ?? 0,
+                                    'ageMax': int.tryParse(
+                                        ageMaxController.text) ?? 120,
+                                    'quorum': int.tryParse(
+                                        quorumController.text) ?? 0,
+                                    'dateFin': dateFinController.text,
+                                    'date_creation': FieldValue
+                                        .serverTimestamp(),
+                                    'pour': 0,
+                                    'contre': 0,
+                                    'abstention': 0,
+                                  });
+                                  if (context.mounted) Navigator.pop(context);
+                                }
+                              },
+                              child: const Text('Créer le vote')
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                      ],
+                    ),
+                  ),
+                ),
           ),
-        ),
-      ),
     );
   }
 }

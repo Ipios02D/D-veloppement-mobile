@@ -152,6 +152,21 @@ class _NewsPageState extends State<NewsPage> {
     bool aUnLien = false;
     bool compterParticipations = false;
 
+    Future<void> selectDate(BuildContext context, StateSetter setModalState) async {
+      final DateTime? picked = await showDatePicker(
+        context: context,
+        initialDate: DateTime.now(),
+        firstDate: DateTime.now(),
+        lastDate: DateTime(2101),
+      );
+      if (picked != null) {
+        setModalState(() {
+          dateController.text = "${picked.day.toString().padLeft(2, '0')}/${picked.month.toString().padLeft(2, '0')}/${picked.year}";
+        });
+      }
+    }
+
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -164,7 +179,15 @@ class _NewsPageState extends State<NewsPage> {
               children: [
                 const Text('Ajouter un Événement', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                 TextField(controller: nomController, decoration: const InputDecoration(labelText: 'Nom *')),
-                TextField(controller: dateController, decoration: const InputDecoration(labelText: 'Date *')),
+                TextField(
+                  controller: dateController,
+                  decoration: const InputDecoration(
+                    labelText: 'Date *',
+                    suffixIcon: Icon(Icons.calendar_today),
+                  ),
+                  readOnly: true,
+                  onTap: () => selectDate(context, setModalState),
+                ),
                 DropdownButtonFormField<Tag>(
                   value: selectedTag,
                   items: Tag.values.map((t) => DropdownMenuItem(value: t, child: Text(t.displayName))).toList(),
