@@ -133,17 +133,17 @@ class _NavBarreState extends State<NavBarre> {
         ],
       ),
 
-      body: <Widget>[
-        LoginPage(onNavigate: changePage), // 0
-        _role == Role.mairie ? HomeMairiePage(onNavigate: changePage) : HomeCitoyenPage(role: _role, onNavigate: changePage), // 1
-        const MapScreen(), // 2
-        LoginPage(onNavigate: changePage), // 3 (Sert pour la déconnexion)
-        NewsPage(role: _role), // 4
-        VotesPage(role: _role), // 5
-        RegisterChoicePage(onNavigate: changePage), // 6
-        RegisterHabitantPage(onNavigate: changePage), // 7
-        RegisterAssoPage(onNavigate: changePage), // 8
-        const AdminConsolePage() // 9
+      body: [
+        LoginPage(onNavigate: changePage),
+        _role == Role.mairie ? HomeMairiePage(onNavigate: changePage) : HomeCitoyenPage(role: _role, onNavigate: changePage),
+        const MapScreen(),
+        LoginPage(onNavigate: changePage),
+        NewsPage(key: ValueKey('news_$_role'), role: _role),   // ← ValueKey force la reconstruction
+        VotesPage(key: ValueKey('votes_$_role'), role: _role), // ← ValueKey force la reconstruction
+        RegisterChoicePage(onNavigate: changePage),
+        RegisterHabitantPage(onNavigate: changePage),
+        RegisterAssoPage(onNavigate: changePage),
+        const AdminConsolePage(),
       ][_currentPageIndex],
     );
   }

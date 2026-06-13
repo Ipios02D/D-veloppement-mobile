@@ -231,11 +231,11 @@ class _HomeCitoyenPageState extends State<HomeCitoyenPage> {
               children: [
                 IconButton(
                   icon: const Icon(Icons.newspaper, color: Colors.blue, size: 40),
-                  onPressed: () => widget.onNavigate(4,Role.habitant),
+                  onPressed: () => widget.onNavigate(4,widget.role),
                 ),
                 IconButton(
                   icon: const Icon(Icons.how_to_vote_outlined, color: Colors.grey, size: 40),
-                  onPressed: () =>  widget.onNavigate(5,Role.habitant)),
+                  onPressed: () =>  widget.onNavigate(5,widget.role)),
               ],
             ),
           ),

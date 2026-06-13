@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../models/role.dart';
 import '../main.dart';
 
@@ -8,6 +9,9 @@ class VotesPage extends StatelessWidget {
 
   // Instance de Firestore
   final FirebaseFirestore _db = FirebaseFirestore.instance;
+
+  String get currentUserId =>
+      FirebaseAuth.instance.currentUser?.uid ?? 'id_utilisateur_test';
 
   VotesPage({super.key, required this.role});
 
@@ -47,6 +51,11 @@ class VotesPage extends StatelessWidget {
                   : 'Inconnue';
               int totalVotes = (data['pour'] ?? 0) + (data['contre'] ?? 0) +
                   (data['abstention'] ?? 0);
+              String createurId = data['createur_id'] ?? '';
+
+              // Mairie peut tout supprimer, asso uniquement ses propres votes
+              bool peutSupprimer = role == Role.mairie ||
+                  (role == Role.association && createurId == currentUserId);
 
               return Card(
                 margin: const EdgeInsets.all(8),
@@ -59,10 +68,10 @@ class VotesPage extends StatelessWidget {
                   onTap: () =>
                       Navigator.push(context, MaterialPageRoute(builder: (_) =>
                           VoteDetailsPage(voteId: vote.id, voteData: data))),
-                  trailing: role == Role.mairie
+                  trailing: peutSupprimer
                       ? IconButton(
-                      icon: const Icon(Icons.delete, color: Colors.red),
-                      onPressed: () => _showDeleteConfirm(context, vote.id)
+                    icon: const Icon(Icons.delete, color: Colors.red),
+                    onPressed: () => _showDeleteConfirm(context, vote.id),
                   )
                       : const Icon(Icons.how_to_vote),
                 ),
@@ -221,6 +230,7 @@ class VotesPage extends StatelessWidget {
                                     'dateFin': dateFinController.text,
                                     'date_creation': FieldValue
                                         .serverTimestamp(),
+                                    'createur_id': currentUserId,
                                     'pour': 0,
                                     'contre': 0,
                                     'abstention': 0,

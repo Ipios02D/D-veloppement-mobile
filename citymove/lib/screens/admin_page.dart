@@ -33,6 +33,9 @@ class _AdminConsolePageState extends State<AdminConsolePage>
         title: const Text('Console Administrateur'),
         bottom: TabBar(
           controller: _tabController,
+          labelColor: Colors.white,
+          unselectedLabelColor: Colors.white70,
+          indicatorColor: Colors.white,
           tabs: const [
             Tab(icon: Icon(Icons.bar_chart), text: 'Stats'),
             Tab(icon: Icon(Icons.people), text: 'Utilisateurs'),
@@ -198,7 +201,7 @@ class _UsersTabState extends State<_UsersTab> {
   final List<String> _filters = ['Tous', 'Citoyen', 'Association', 'Mairie'];
 
   Stream<QuerySnapshot> get _stream {
-    Query q = widget.db.collection('utilisateurs').orderBy('date_creation', descending: true);
+    Query q = widget.db.collection('utilisateurs');
     if (_filter != 'Tous') {
       q = q.where('statut', isEqualTo: _filter);
     }

@@ -34,11 +34,27 @@ class _LoginPageState extends State<LoginPage> {
 
       if (doc.exists && mounted) {
         String statut = doc['statut'];
+
+        // Bloquer les associations non encore validées par l'admin
+        if (statut == 'Association') {
+          bool validee = doc.data().toString().contains('validee')
+              ? (doc['validee'] ?? false)
+              : false;
+          if (!validee) {
+            await FirebaseAuth.instance.signOut();
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('Votre compte association est en attente de validation par la mairie.'),
+              duration: Duration(seconds: 4),
+            ));
+            return;
+          }
+        }
+
         if (statut == 'Mairie') {
-          widget.onNavigate(1,Role.mairie);
+          widget.onNavigate(1, Role.mairie);
         } else {
           Role userRole = statut == 'Association' ? Role.association : Role.habitant;
-          widget.onNavigate(1,userRole);
+          widget.onNavigate(1, userRole);
         }
       }
     } on FirebaseAuthException catch (e) {
@@ -79,9 +95,11 @@ class _LoginPageState extends State<LoginPage> {
               alignment: WrapAlignment.center,
               spacing: 8,
               children: [
-                ActionChip(label: const Text('Habitant'), onPressed: () => widget.onNavigate(1,Role.habitant)),
-                ActionChip(label: const Text('Association'), onPressed: () => widget.onNavigate(1,Role.association)),
-                ActionChip(label: const Text('Mairie'), onPressed: () => widget.onNavigate(1,Role.mairie)),
+                ActionChip(label: const Text('Habitant'), onPressed: () => widget.onNavigate(1, Role.habitant)),
+                // Association en test → rôle association mais sans passer par Firebase
+                // NB : ce bouton bypasse la vérification validee, normal en mode test
+                ActionChip(label: const Text('Association (test)'), onPressed: () => widget.onNavigate(1, Role.association)),
+                ActionChip(label: const Text('Mairie'), onPressed: () => widget.onNavigate(1, Role.mairie)),
               ],
             )
           ],
@@ -91,7 +109,7 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   void _loginAs(BuildContext context, Role role) {
-      widget.onNavigate(1,role);
+    widget.onNavigate(1,role);
   }
 }
 
@@ -166,7 +184,7 @@ class _RegisterHabitantPageState extends State<RegisterHabitantPage> {
       setState(() {
         // Formate la date en JJ/MM/AAAA
         dateNaissanceController.text =
-            "${picked.day.toString().padLeft(2, '0')}/${picked.month.toString().padLeft(2, '0')}/${picked.year}";
+        "${picked.day.toString().padLeft(2, '0')}/${picked.month.toString().padLeft(2, '0')}/${picked.year}";
       });
     }
   }
@@ -317,16 +335,19 @@ class _RegisterAssoPageState extends State<RegisterAssoPage> {
         'date_creation': FieldValue.serverTimestamp(),
       });
 
-      // 4. Succès
+      // 4. Déconnexion immédiate : l'asso doit attendre la validation admin
+      await FirebaseAuth.instance.signOut();
+
+      // 5. Succès
       if (mounted) {
         showDialog(
           context: context,
           builder: (context) => AlertDialog(
             title: const Text('Demande envoyée !'),
-            content: Text('L\'association ${nomController.text} a bien été enregistrée. Vous pouvez vous connecter.'),
+            content: Text('L\'association ${nomController.text} a bien été enregistrée. Votre compte sera accessible une fois validé par la mairie.'),
             actions: [
               TextButton(
-                onPressed: () => Navigator.popUntil(context, (route) => route.isFirst),
+                onPressed: () => widget.onNavigate(0, Role.habitant),
                 child: const Text('OK'),
               ),
             ],
@@ -342,11 +363,11 @@ class _RegisterAssoPageState extends State<RegisterAssoPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-          title: const Text('Inscription Association'),
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back),
-            onPressed: () => widget.onNavigate(0, Role.association), // Retour à LoginPage (index 0 ou selon votre Main)
-          ),
+        title: const Text('Inscription Association'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => widget.onNavigate(0, Role.association), // Retour à LoginPage (index 0 ou selon votre Main)
+        ),
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
