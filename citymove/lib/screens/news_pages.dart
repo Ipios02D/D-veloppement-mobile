@@ -9,8 +9,8 @@ import 'event_details_popup.dart';
 
 class NewsPage extends StatefulWidget {
   final Role role;
-
-  const NewsPage({super.key, required this.role,});
+  final Function(int, Role) onNavigate;
+  const NewsPage({super.key, required this.role,required this.onNavigate});
 
   @override
   State<NewsPage> createState() => _NewsPageState();
@@ -32,7 +32,7 @@ class _NewsPageState extends State<NewsPage> {
         actions: [
           IconButton(
             icon: Icon(_showMap ? Icons.list : Icons.map),
-            onPressed: () => setState(() => _showMap = !_showMap),
+            onPressed: () => widget.onNavigate(2, widget.role),
           )
         ],
       ),

@@ -1,8 +1,36 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:http/http.dart' as http;
+import '../models/role.dart';
+import '../models/tag.dart';
+import 'event_details_popup.dart';
 
-// MapScreen est devenu un StatefulWidget pour gérer l'état
+// ─────────────────────────────────────────────────────────────────────────────
+// MODÈLE INTERNE
+// ─────────────────────────────────────────────────────────────────────────────
+class _GeoEvent {
+  final String id;
+  final Map<String, dynamic> data;
+  final LatLng location;
+  final Tag? tag;
+
+  const _GeoEvent({
+    required this.id,
+    required this.data,
+    required this.location,
+    required this.tag,
+  });
+
+  Color get markerColor => tag?.color ?? Colors.blueGrey;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PAGE PRINCIPALE
+// ─────────────────────────────────────────────────────────────────────────────
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
 
@@ -11,91 +39,328 @@ class MapScreen extends StatefulWidget {
 }
 
 class _MapScreenState extends State<MapScreen> {
-  // Variable d'état pour savoir si la souris est sur le marqueur
-  bool _isHovering = false;
+  final FirebaseFirestore _db = FirebaseFirestore.instance;
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          'Flutter Map Example',
-          style: TextStyle(fontSize: 20),
-        ),
+  // Cache géocodage : lieu → LatLng (évite les appels répétés)
+  final Map<String, LatLng?> _geoCache = {};
+
+  // Filtre actif (null = Tous)
+  Tag? _selectedTag;
+
+  // Centre par défaut : Valenciennes
+  static const LatLng _defaultCenter = LatLng(50.3579, 3.5244);
+
+  String get currentUserId =>
+      FirebaseAuth.instance.currentUser?.uid ?? 'id_utilisateur_test';
+
+  // ── Géocodage Nominatim (OSM, gratuit, sans clé API) ──────────────────────
+  Future<LatLng?> _geocode(String lieu) async {
+    if (lieu.trim().isEmpty) return null;
+    if (_geoCache.containsKey(lieu)) return _geoCache[lieu];
+
+    try {
+      final uri = Uri.parse(
+        'https://nominatim.openstreetmap.org/search'
+            '?q=${Uri.encodeComponent(lieu)}'
+            '&format=json&limit=1',
+      );
+      final response = await http.get(uri, headers: {
+        'User-Agent': 'citymove-flutter-app/1.0',
+      });
+      if (response.statusCode == 200) {
+        final List results = json.decode(response.body);
+        if (results.isNotEmpty) {
+          final lat = double.tryParse(results[0]['lat'] ?? '');
+          final lon = double.tryParse(results[0]['lon'] ?? '');
+          if (lat != null && lon != null) {
+            final coords = LatLng(lat, lon);
+            _geoCache[lieu] = coords;
+            return coords;
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Geocoding error for "$lieu": $e');
+    }
+
+    _geoCache[lieu] = null;
+    return null;
+  }
+
+  // ── Construction de la liste des marqueurs géocodés ───────────────────────
+  Future<List<_GeoEvent>> _buildGeoEvents(List<QueryDocumentSnapshot> docs) async {
+    final List<_GeoEvent> result = [];
+
+    for (final doc in docs) {
+      final data = doc.data() as Map<String, dynamic>;
+      final lieu = (data['lieu'] ?? '').toString().trim();
+      if (lieu.isEmpty) continue;
+
+      final Tag? tag = getTagFromString(data['tag']);
+
+      // Filtre tag
+      if (_selectedTag != null && tag != _selectedTag) continue;
+
+      final LatLng? coords = await _geocode(lieu);
+      if (coords == null) continue;
+
+      result.add(_GeoEvent(
+        id: doc.id,
+        data: data,
+        location: coords,
+        tag: tag,
+      ));
+    }
+
+    return result;
+  }
+
+  // ── Popup détails (même que dans news_pages) ──────────────────────────────
+  void _showDetails(BuildContext context, _GeoEvent event) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      body: content(context),
+      builder: (_) => EventDetailsPopup(
+        eventId: event.id,
+        eventData: event.data,
+        role: Role.habitant, // la popup gère elle-même les droits
+      ),
     );
   }
 
-  Widget content(BuildContext context) {
-    // Définition des tailles normales et agrandies
-    const double normalSize = 40.0;
-    const double hoverSize = 60.0; // 50% plus gros
+  // ── UI ────────────────────────────────────────────────────────────────────
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Carte des Événements')),
+      body: StreamBuilder<QuerySnapshot>(
+        stream: _db
+            .collection('evenements')
+            .orderBy('date_creation', descending: true)
+            .snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return const Center(child: Text('Erreur de chargement'));
+          }
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
 
-    return FlutterMap(
-      options: const MapOptions(
-        initialCenter: LatLng(50.35732, 3.52357),
-        initialZoom: 15,
-        interactionOptions: InteractionOptions(
-          flags: ~InteractiveFlag.doubleTapZoom,
-        ),
-      ),
-      children: [
-        openStreetMapTileLayer,
-        MarkerLayer(
-          markers: [
-            Marker(
-              point: const LatLng(50.33257401019579, 3.511126919232961),
-              // La taille du Marker doit être celle de l'icône la plus grande
-              width: hoverSize,
-              height: hoverSize,
-              // Aligner le bas de l'icône sur le point GPS
-              alignment: Alignment.topCenter,
-              child: MouseRegion(
-                // 1. Gérer les événements de la souris
-                onEnter: (_) => setState(() => _isHovering = true),
-                onExit: (_) => setState(() => _isHovering = false),
-                cursor: SystemMouseCursors.click, // Change le curseur en main
-                child: GestureDetector(
-                  onTap: () {
-                    showDialog(
-                      context: context,
-                      builder: (dialogContext) => AlertDialog(
-                        title: const Text('Marker Tapped'),
-                        content: const Text('You tapped the marker!'),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.of(dialogContext).pop(),
-                            child: const Text('OK'),
+          final docs = snapshot.data!.docs;
+
+          return Column(
+            children: [
+              // ── Barre de filtres par tag ──────────────────────────────
+              _TagFilterBar(
+                selectedTag: _selectedTag,
+                onTagSelected: (tag) => setState(() => _selectedTag = tag),
+              ),
+
+              // ── Carte ─────────────────────────────────────────────────
+              Expanded(
+                child: FutureBuilder<List<_GeoEvent>>(
+                  future: _buildGeoEvents(docs),
+                  builder: (context, geoSnap) {
+                    final geoEvents = geoSnap.data ?? [];
+                    final isLoading =
+                        geoSnap.connectionState == ConnectionState.waiting;
+
+                    return Stack(
+                      children: [
+                        FlutterMap(
+                          options: const MapOptions(
+                            initialCenter: _defaultCenter,
+                            initialZoom: 13,
                           ),
-                        ],
-                      ),
+                          children: [
+                            TileLayer(
+                              urlTemplate:
+                              'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                              userAgentPackageName: 'com.example.citymove',
+                            ),
+                            MarkerLayer(
+                              markers: geoEvents
+                                  .map((e) => Marker(
+                                point: e.location,
+                                width: 44,
+                                height: 44,
+                                alignment: Alignment.topCenter,
+                                child: _EventMarker(
+                                  event: e,
+                                  onTap: () =>
+                                      _showDetails(context, e),
+                                ),
+                              ))
+                                  .toList(),
+                            ),
+                          ],
+                        ),
+
+                        // Indicateur de chargement du géocodage
+                        if (isLoading)
+                          Positioned(
+                            top: 10,
+                            right: 10,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.9),
+                                borderRadius: BorderRadius.circular(20),
+                                boxShadow: const [
+                                  BoxShadow(
+                                      color: Colors.black12, blurRadius: 4)
+                                ],
+                              ),
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  SizedBox(
+                                    width: 14,
+                                    height: 14,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2),
+                                  ),
+                                  SizedBox(width: 8),
+                                  Text('Localisation…',
+                                      style: TextStyle(fontSize: 12)),
+                                ],
+                              ),
+                            ),
+                          ),
+
+                        // Compte des événements affichés
+                        if (!isLoading)
+                          Positioned(
+                            top: 10,
+                            right: 10,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.9),
+                                borderRadius: BorderRadius.circular(20),
+                                boxShadow: const [
+                                  BoxShadow(
+                                      color: Colors.black12, blurRadius: 4)
+                                ],
+                              ),
+                              child: Text(
+                                '${geoEvents.length} événement${geoEvents.length > 1 ? 's' : ''}',
+                                style: const TextStyle(
+                                    fontSize: 12, fontWeight: FontWeight.w600),
+                              ),
+                            ),
+                          ),
+                      ],
                     );
                   },
-                  // 2. Animer le changement de taille de l'icône
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    curve: Curves.easeOut,
-                    width: _isHovering ? hoverSize : normalSize,
-                    height: _isHovering ? hoverSize : normalSize,
-                    child: Icon(
-                      Icons.location_pin,
-                      // La taille de l'icône doit suivre celle de son conteneur
-                      size: _isHovering ? hoverSize : normalSize,
-                      color: Colors.red,
-                    ),
-                  ),
                 ),
               ),
-            ),
-          ],
-        ),
-      ],
+            ],
+          );
+        },
+      ),
     );
   }
 }
 
-TileLayer get openStreetMapTileLayer => TileLayer(
-      urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-      userAgentPackageName: 'dev.fleaflet.flutter_map.example',
+// ─────────────────────────────────────────────────────────────────────────────
+// BARRE DE FILTRES PAR TAG
+// ─────────────────────────────────────────────────────────────────────────────
+class _TagFilterBar extends StatelessWidget {
+  final Tag? selectedTag;
+  final ValueChanged<Tag?> onTagSelected;
+
+  const _TagFilterBar({
+    required this.selectedTag,
+    required this.onTagSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 52,
+      color: Theme.of(context).colorScheme.surface,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        children: [
+          // Puce "Tous"
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: FilterChip(
+              label: const Text('Tous'),
+              selected: selectedTag == null,
+              onSelected: (_) => onTagSelected(null),
+              selectedColor:
+              Theme.of(context).colorScheme.primary.withOpacity(0.2),
+            ),
+          ),
+          // Une puce par tag
+          ...Tag.values.map((tag) => Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: FilterChip(
+              label: Text(
+                tag.displayName,
+                style: TextStyle(
+                  color: selectedTag == tag ? tag.color : null,
+                ),
+              ),
+              selected: selectedTag == tag,
+              selectedColor: tag.color.withOpacity(0.2),
+              checkmarkColor: tag.color,
+              side: selectedTag == tag
+                  ? BorderSide(color: tag.color)
+                  : null,
+              onSelected: (_) =>
+                  onTagSelected(selectedTag == tag ? null : tag),
+            ),
+          )),
+        ],
+      ),
     );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WIDGET MARQUEUR
+// ─────────────────────────────────────────────────────────────────────────────
+class _EventMarker extends StatefulWidget {
+  final _GeoEvent event;
+  final VoidCallback onTap;
+
+  const _EventMarker({required this.event, required this.onTap});
+
+  @override
+  State<_EventMarker> createState() => _EventMarkerState();
+}
+
+class _EventMarkerState extends State<_EventMarker> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedScale(
+          scale: _hovered ? 1.25 : 1.0,
+          duration: const Duration(milliseconds: 150),
+          child: Icon(
+            Icons.location_pin,
+            size: 44,
+            color: widget.event.markerColor,
+            shadows: const [Shadow(color: Colors.black26, blurRadius: 4)],
+          ),
+        ),
+      ),
+    );
+  }
+}

@@ -138,7 +138,7 @@ class _NavBarreState extends State<NavBarre> {
         _role == Role.mairie ? HomeMairiePage(onNavigate: changePage) : HomeCitoyenPage(role: _role, onNavigate: changePage),
         const MapScreen(),
         LoginPage(onNavigate: changePage),
-        NewsPage(key: ValueKey('news_$_role'), role: _role),   // ← ValueKey force la reconstruction
+        NewsPage(key: ValueKey('news_$_role'), role: _role, onNavigate: changePage),   // ← ValueKey force la reconstruction
         VotesPage(key: ValueKey('votes_$_role'), role: _role), // ← ValueKey force la reconstruction
         RegisterChoicePage(onNavigate: changePage),
         RegisterHabitantPage(onNavigate: changePage),
