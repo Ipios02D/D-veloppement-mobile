@@ -165,7 +165,6 @@ class _HomeCitoyenPageState extends State<HomeCitoyenPage> {
 
   Future<void> fetchWeather() async {
     try {
-      // Note : j'ai ajouté 'relative_humidity_2m' et 'is_day' à l'URL pour répondre à ta demande
       final response = await http.get(Uri.parse(
           'https://api.open-meteo.com/v1/forecast?latitude=50.3579&longitude=3.5244&current=temperature_2m,relative_humidity_2m,is_day'));
 

@@ -313,6 +313,7 @@ class _RegisterAssoPageState extends State<RegisterAssoPage> {
         'sujet': sujetController.text,
         'siret': siretController.text,
         'statut': 'Association',
+        'validee' : false,
         'date_creation': FieldValue.serverTimestamp(),
       });
 
