@@ -89,7 +89,32 @@ Comme expliqué plus haut, notre application est composé de plusieurs pages qui
 Nous pouvons donc nous répartir les différentes pages à développer. Ainsi nous pouvons tous travailler de manière indépendante et fusionner nos projets plus tard.
 Cela nous permet de nous organiser correctement et de pouvoir travailler en parallele, plutôt que d'attendre que certaines partie de notre projet soit finies pour continuer.
 
-= Mise en place des pages
+= Détails des pages
+
+== Page d'acceuil et création de compt
+
+La page d'acceuil et la page de création de compte sont trés similaire techniquement parlant.
+On utilise ici des controlleurs pour chaque champs que l'utilisateur doit remplir, puis on récupère les données que l'on envoie directement sur note base de données Firebase.
+
+Pour l'authentification, nous utilisons les services déjà disponibles avec Firebase qui est _*createUserWithEmailAndPassword*_, ce qui nous permet de ne pas avoir à gérer le cryptage des informations, ou de devoir créer des fonctions de vérification des identifiants pour la connexion.
+
+== Barre de navigation
+
+Nous avons implémenté dans notre application une barre de navigation qui reste présente sur toutes les pages disponibles. Nous avons donc dû créer plusieures fonction afin de pouvoir changer de pages sans que la barre de navigation disparaisse.
+C'est aussi sur cette barre que vous pouvez changer le thème de l'application (thème clair ou thème sombre).
+
+== Carte
+Pour la carte, notre page doit uniquement aficher les points contenus dans notre base de données ainsi que la carte en elle même. On réutilise l'api de l'application météo puisque nous connaissons son fonctionnement. 
+Ainsi nous avons jsute à stocker les coordonnées géographique des points à afficher sur notre carte et de les parcourirs.
+
+== Page de vote
+
+C'est sur cette page que les utilisateurs peuvent voter sur des sondages ou les modifier/supprimer en tant qu'administrateur. Chaque personne ne peut voter qu'une seule fois grâce aux identifiants uniques que nous avons dans notre base de données. Les administrateurs et les associations quand à eux peuvent créer de nouveaux sondages ou voir les votes et résultats.
+
+
+
+
+
 
 
 
