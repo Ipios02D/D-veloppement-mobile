@@ -5,6 +5,17 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../models/role.dart';
 import '../models/tag.dart';
 
+// =============================================================================
+// EventDetailsPopup — Fiche détaillée d'un événement en bottom sheet
+//
+// Utilisé depuis deux endroits :
+//   - news_pages.dart : au tap sur une carte d'événement dans la liste.
+//   - carte_page.dart : au tap sur un marqueur de la carte interactive.
+//
+// Le widget reçoit les données brutes du document Firestore (eventData) et
+// l'identifiant du document (eventId) pour pouvoir écrire dans Firestore
+// si l'utilisateur clique sur "Je participe".
+// =============================================================================
 class EventDetailsPopup extends StatefulWidget {
   final String eventId;
   final Map<String, dynamic> eventData;
@@ -22,46 +33,65 @@ class EventDetailsPopup extends StatefulWidget {
 }
 
 class _EventDetailsPopupState extends State<EventDetailsPopup> {
-  // L'identifiant de l'utilisateur connecté
+  // Récupère l'uid Firebase de l'utilisateur connecté.
+  // La valeur de fallback 'id_test' ne sert qu'en mode développement sans auth.
   String get currentUserId {
     return FirebaseAuth.instance.currentUser?.uid ?? 'id_test';
   }
 
-  // Fonction pour ouvrir le lien web
+  // Ouvre une URL dans le navigateur externe de l'appareil.
+  // Affiche un SnackBar si l'URL ne peut pas être ouverte (format invalide,
+  // aucune application disponible, etc.).
   Future<void> _ouvrirLien(String url) async {
     final Uri uri = Uri.parse(url);
     if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Impossible d'ouvrir le lien.")));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Impossible d'ouvrir le lien.")),
+        );
       }
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // build — Affichage de la fiche événement
+  //
+  // Données lues depuis widget.eventData (Map Firestore) :
+  //   - nom, description, lieu, date_event, createur_nom, tag
+  //   - a_un_lien, lien_inscription   → contrôle le bouton d'inscription externe
+  //   - compter_participations         → active le compteur de participants
+  //   - participants_ids               → liste des uid des participants
+  //
+  // Le bouton d'action en bas a trois états :
+  //   1. Lien externe    → ouvre lien_inscription dans le navigateur.
+  //   2. Participation   → ajoute l'uid dans participants_ids dans Firestore
+  //                        et met à jour l'état local immédiatement.
+  //   3. Déjà inscrit    → bouton désactivé (gris) si compterParticipations
+  //                        est actif et qu'aucun lien n'est prévu.
+  // ---------------------------------------------------------------------------
   @override
   Widget build(BuildContext context) {
-    // --- Extraction des données ---
     String titre = widget.eventData['nom'] ?? 'Sans titre';
     String description = widget.eventData['description'] ?? '';
     String lieu = widget.eventData['lieu'] ?? '';
     String dateEvent = widget.eventData['date_event'] ?? '';
-
-    // --- CORRECTION ICI : On utilise bien 'createur_nom' ---
     String organisateurNom = widget.eventData['createur_nom'] ?? 'Inconnu';
 
     Tag? eventTag = getTagFromString(widget.eventData['tag']);
 
     bool aUnLien = widget.eventData['a_un_lien'] ?? false;
     String lienInscription = widget.eventData['lien_inscription'] ?? '';
-    bool compterParticipations = widget.eventData['compter_participations'] ?? false;
+    bool compterParticipations =
+        widget.eventData['compter_participations'] ?? false;
 
-    // Récupération de la liste des participants
-    List<dynamic> participantsIds = widget.eventData['participants_ids'] ?? [];
+    List<dynamic> participantsIds =
+        widget.eventData['participants_ids'] ?? [];
     int nombreParticipants = participantsIds.length;
     bool aDejaParticipe = participantsIds.contains(currentUserId);
 
-    // --- Le Widget ---
     return Padding(
-      // Padding dynamique pour éviter que le clavier (si jamais on en avait besoin) ne cache la vue
+      // Le padding bottom s'adapte à la hauteur du clavier pour ne pas
+      // cacher le contenu si un champ de saisie venait à être ajouté.
       padding: EdgeInsets.only(
         bottom: MediaQuery.of(context).viewInsets.bottom,
         left: 20,
@@ -69,26 +99,32 @@ class _EventDetailsPopupState extends State<EventDetailsPopup> {
         top: 24,
       ),
       child: Column(
-        mainAxisSize: MainAxisSize.min, // La pop-up prend juste la hauteur nécessaire
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // En-tête : Titre et bouton de fermeture
+          // En-tête : titre à gauche, croix de fermeture à droite.
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Expanded(child: Text(titre, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold))),
+              Expanded(
+                child: Text(titre,
+                    style: const TextStyle(
+                        fontSize: 24, fontWeight: FontWeight.bold)),
+              ),
               IconButton(
                 icon: const Icon(Icons.close),
-                onPressed: () => Navigator.pop(context), // Fermer la pop-up
+                onPressed: () => Navigator.pop(context),
               )
             ],
           ),
 
-          // Tag
+          // Chip colorée du tag (n'apparaît que si le tag est reconnu).
           if (eventTag != null) ...[
             const SizedBox(height: 8),
             Chip(
-              label: Text(eventTag.displayName, style: TextStyle(color: eventTag.color.withOpacity(0.9))),
+              label: Text(eventTag.displayName,
+                  style:
+                  TextStyle(color: eventTag.color.withOpacity(0.9))),
               backgroundColor: eventTag.color.withOpacity(0.1),
               side: BorderSide(color: eventTag.color.withOpacity(0.5)),
             ),
@@ -96,83 +132,131 @@ class _EventDetailsPopupState extends State<EventDetailsPopup> {
 
           const Divider(height: 36),
 
-          // Informations de base
+          // Ligne date.
           if (dateEvent.isNotEmpty)
-            Row(children: [const Icon(Icons.calendar_today, color: Colors.deepPurple, size: 20), const SizedBox(width: 12), Text(dateEvent, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold))]),
+            Row(children: [
+              const Icon(Icons.calendar_today,
+                  color: Colors.deepPurple, size: 20),
+              const SizedBox(width: 12),
+              Text(dateEvent,
+                  style: const TextStyle(
+                      fontSize: 16, fontWeight: FontWeight.bold)),
+            ]),
 
+          // Ligne lieu.
           if (lieu.isNotEmpty) ...[
             const SizedBox(height: 12),
-            Row(children: [const Icon(Icons.location_on, color: Colors.redAccent, size: 20), const SizedBox(width: 12), Text(lieu, style: const TextStyle(fontSize: 16))]),
+            Row(children: [
+              const Icon(Icons.location_on, color: Colors.redAccent, size: 20),
+              const SizedBox(width: 12),
+              Text(lieu, style: const TextStyle(fontSize: 16)),
+            ]),
           ],
 
-          // Affichage de l'organisateur (utilisation de la nouvelle variable)
-          if (organisateurNom.isNotEmpty && organisateurNom != 'Inconnu') ...[
+          // Ligne organisateur (masquée si valeur absente ou "Inconnu").
+          if (organisateurNom.isNotEmpty &&
+              organisateurNom != 'Inconnu') ...[
             const SizedBox(height: 12),
-            Row(children: [const Icon(Icons.person, color: Colors.blueGrey, size: 20), const SizedBox(width: 12), Text("Organisé par : $organisateurNom", style: const TextStyle(fontSize: 14, fontStyle: FontStyle.italic))]),
+            Row(children: [
+              const Icon(Icons.person, color: Colors.blueGrey, size: 20),
+              const SizedBox(width: 12),
+              Text("Organisé par : $organisateurNom",
+                  style: const TextStyle(
+                      fontSize: 14, fontStyle: FontStyle.italic)),
+            ]),
           ],
 
           const SizedBox(height: 24),
 
-          // Description
+          // Bloc description.
           if (description.isNotEmpty) ...[
-            const Text("À propos de l'événement :", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            const Text("À propos de l'événement :",
+                style:
+                TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             const SizedBox(height: 8),
             Text(description, style: const TextStyle(fontSize: 15)),
           ],
 
-          // Compteur (Information)
+          // Compteur de participants (affiché uniquement si activé par l'organisateur).
           if (compterParticipations) ...[
             const SizedBox(height: 24),
             Row(
               children: [
                 const Icon(Icons.people, color: Colors.grey, size: 18),
                 const SizedBox(width: 8),
-                Text('$nombreParticipants personnes participent', style: const TextStyle(color: Colors.grey, fontStyle: FontStyle.italic)),
+                Text('$nombreParticipants personnes participent',
+                    style: const TextStyle(
+                        color: Colors.grey, fontStyle: FontStyle.italic)),
               ],
             ),
           ],
 
           const SizedBox(height: 32),
 
-          // Bouton d'action
+          // Bouton d'action principal.
+          // Visible uniquement si l'événement a un lien ou suit les participations.
           if (aUnLien || compterParticipations)
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
-                icon: Icon(aUnLien ? Icons.open_in_new : (aDejaParticipe ? Icons.check : Icons.thumb_up)),
+                icon: Icon(aUnLien
+                    ? Icons.open_in_new
+                    : (aDejaParticipe ? Icons.check : Icons.thumb_up)),
                 style: ElevatedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 16),
-                  backgroundColor: aDejaParticipe ? Colors.grey.shade400 : Theme.of(context).colorScheme.primary,
+                  // Bouton grisé si l'utilisateur est déjà inscrit et qu'il
+                  // n'y a pas de lien externe à ouvrir.
+                  backgroundColor: aDejaParticipe
+                      ? Colors.grey.shade400
+                      : Theme.of(context).colorScheme.primary,
                   foregroundColor: Colors.white,
                 ),
-                // Logique du bouton
-                onPressed: (compterParticipations && aDejaParticipe && !aUnLien) ? null : () async {
-
-                  // 1. Ajouter l'utilisateur à Firestore s'il n'y est pas
+                // Le bouton est désactivé uniquement si participation déjà faite
+                // et qu'il n'y a pas de lien à ouvrir en plus.
+                onPressed:
+                (compterParticipations && aDejaParticipe && !aUnLien)
+                    ? null
+                    : () async {
+                  // Étape 1 : Enregistre la participation dans Firestore.
                   if (compterParticipations && !aDejaParticipe) {
-                    await FirebaseFirestore.instance.collection('evenements').doc(widget.eventId).update({
-                      'participants_ids': FieldValue.arrayUnion([currentUserId]),
+                    await FirebaseFirestore.instance
+                        .collection('evenements')
+                        .doc(widget.eventId)
+                        .update({
+                      'participants_ids':
+                      FieldValue.arrayUnion([currentUserId]),
                     });
 
                     if (context.mounted) {
-                      // On met à jour l'état local pour que le bouton devienne gris instantanément
+                      // Mise à jour locale immédiate pour griser
+                      // le bouton sans attendre le prochain snapshot.
                       setState(() {
-                        widget.eventData['participants_ids'].add(currentUserId);
+                        widget.eventData['participants_ids']
+                            .add(currentUserId);
                       });
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Votre participation a été enregistrée !')));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                            content: Text(
+                                'Votre participation a été enregistrée !')),
+                      );
                     }
                   }
 
-                  // 2. Ouvrir le lien
+                  // Étape 2 : Ouvre le lien externe si présent.
                   if (aUnLien && lienInscription.isNotEmpty) {
                     _ouvrirLien(lienInscription);
                   }
                 },
-                label: Text(aUnLien ? "S'inscrire sur le site" : (aDejaParticipe ? "Vous êtes inscrit" : "Je participe !"), style: const TextStyle(fontSize: 18)),
+                label: Text(
+                  aUnLien
+                      ? "S'inscrire sur le site"
+                      : (aDejaParticipe ? "Vous êtes inscrit" : "Je participe !"),
+                  style: const TextStyle(fontSize: 18),
+                ),
               ),
             ),
 
-          const SizedBox(height: 24), // Espace en bas
+          const SizedBox(height: 24),
         ],
       ),
     );
