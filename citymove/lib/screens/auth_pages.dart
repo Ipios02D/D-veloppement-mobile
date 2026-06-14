@@ -1,230 +1,137 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/role.dart';
+import 'home_pages.dart';
 
 // =============================================================================
-// AdminConsolePage — Console d'administration réservée à la mairie
+// LoginPage — Page de connexion
 //
-// Accessible depuis HomeMairiePage via onNavigate(9, Role.mairie).
-// Organisée en trois onglets gérés par un TabController :
+// Flux d'authentification en deux étapes :
+//   1. Firebase Auth : vérifie email + mot de passe.
+//   2. Firestore     : lit le document utilisateur pour connaître le statut
+//                      ('Citoyen', 'Association', 'Mairie') et en déduire le Role.
 //
-//   Onglet 0 — _StatsTab         : compteurs globaux de la base de données.
-//   Onglet 1 — _UsersTab         : liste et gestion de tous les utilisateurs.
-//   Onglet 2 — _PendingAssosTab  : demandes d'inscription d'associations
-//                                   en attente de validation.
+// Cas particulier des associations : une association dont le champ 'validee'
+// est absent ou false est déconnectée immédiatement (signOut) et informée
+// que son compte est en attente de validation par la mairie.
 //
-// SingleTickerProviderStateMixin est requis par TabController pour
-// piloter les animations de transition entre onglets.
+// Des ActionChips de test permettent de bypasser Firebase Auth en développement.
+// Ils doivent être supprimés avant mise en production.
 // =============================================================================
-class AdminConsolePage extends StatefulWidget {
-  const AdminConsolePage({super.key});
+class LoginPage extends StatefulWidget {
+  final Function(int, Role) onNavigate;
+  const LoginPage({super.key, required this.onNavigate});
 
   @override
-  State<AdminConsolePage> createState() => _AdminConsolePageState();
+  State<LoginPage> createState() => _LoginPageState();
 }
 
-class _AdminConsolePageState extends State<AdminConsolePage>
-    with SingleTickerProviderStateMixin {
-  late TabController _tabController;
-  final FirebaseFirestore _db = FirebaseFirestore.instance;
+class _LoginPageState extends State<LoginPage> {
+  final emailController = TextEditingController();
+  final mdpController   = TextEditingController();
 
-  @override
-  void initState() {
-    super.initState();
-    // length: 3 correspond aux trois onglets Stats / Utilisateurs / En attente.
-    _tabController = TabController(length: 3, vsync: this);
+  // ---------------------------------------------------------------------------
+  // _seConnecter — Authentification Firebase + résolution du rôle Firestore
+  //
+  // Étape 1 : signInWithEmailAndPassword → lève FirebaseAuthException si
+  //           les identifiants sont incorrects.
+  // Étape 2 : lecture du document 'utilisateurs/{uid}' pour obtenir 'statut'.
+  // Étape 3 : redirection via onNavigate(1, role) vers la page d'accueil
+  //           adaptée au rôle (HomeMairiePage ou HomeCitoyenPage).
+  // ---------------------------------------------------------------------------
+  Future<void> _seConnecter() async {
+    if (emailController.text.isEmpty || mdpController.text.isEmpty) return;
+
+    try {
+      UserCredential user = await FirebaseAuth.instance.signInWithEmailAndPassword(
+        email: emailController.text.trim(),
+        password: mdpController.text,
+      );
+
+      DocumentSnapshot doc = await FirebaseFirestore.instance
+          .collection('utilisateurs')
+          .doc(user.user!.uid)
+          .get();
+
+      if (doc.exists && mounted) {
+        String statut = doc['statut'];
+
+        // Vérification de la validation pour les associations.
+        // La mairie valide via AdminConsolePage (_PendingAssosTab).
+        // Si non validée : signOut + SnackBar d'information.
+        if (statut == 'Association') {
+          bool validee = doc.data().toString().contains('validee')
+              ? (doc['validee'] ?? false)
+              : false;
+          if (!validee) {
+            await FirebaseAuth.instance.signOut();
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text(
+                  'Votre compte association est en attente de validation par la mairie.'),
+              duration: Duration(seconds: 4),
+            ));
+            return;
+          }
+        }
+
+        // Conversion statut Firestore (String) → Role Dart.
+        if (statut == 'Mairie') {
+          widget.onNavigate(1, Role.mairie);
+        } else {
+          Role userRole =
+          statut == 'Association' ? Role.association : Role.habitant;
+          widget.onNavigate(1, userRole);
+        }
+      }
+    } on FirebaseAuthException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Erreur: ${e.message}')));
+      }
+    }
   }
 
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
+  // Raccourci interne utilisé par les ActionChips de test.
+  void _loginAs(BuildContext context, Role role) {
+    widget.onNavigate(1, role);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Console Administrateur'),
-        // TabBar intégrée à l'AppBar pour un rendu Material 3 cohérent.
-        // Les couleurs sont forcées en blanc pour contraster avec l'AppBar bleue.
-        bottom: TabBar(
-          controller: _tabController,
-          labelColor: Colors.white,
-          unselectedLabelColor: Colors.white70,
-          indicatorColor: Colors.white,
-          tabs: const [
-            Tab(icon: Icon(Icons.bar_chart), text: 'Stats'),
-            Tab(icon: Icon(Icons.people), text: 'Utilisateurs'),
-            Tab(icon: Icon(Icons.pending_actions), text: 'En attente'),
-          ],
-        ),
-      ),
-      // Chaque enfant de TabBarView reçoit l'instance Firestore partagée
-      // pour éviter d'en créer plusieurs et de multiplier les connexions.
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          _StatsTab(db: _db),
-          _UsersTab(db: _db),
-          _PendingAssosTab(db: _db),
-        ],
-      ),
-    );
-  }
-}
-
-// =============================================================================
-// _StatsTab — Onglet Statistiques
-//
-// Affiche des compteurs en temps quasi-réel via FutureBuilder.
-// Les cinq requêtes Firestore sont lancées en parallèle avec Future.wait
-// pour minimiser le temps d'attente total.
-//
-// Compteurs affichés :
-//   [0] Total utilisateurs (toute la collection)
-//   [1] Habitants           (statut == 'Citoyen')
-//   [2] Associations        (statut == 'Association')
-//   [3] Événements          (toute la collection evenements)
-//   [4] Votes               (toute la collection votes)
-//
-// Utilise l'API count() de Firestore (agrégation côté serveur) pour éviter
-// de rapatrier tous les documents et réduire les coûts de lecture.
-// =============================================================================
-class _StatsTab extends StatelessWidget {
-  final FirebaseFirestore db;
-  const _StatsTab({required this.db});
-
-  // Compte tous les documents d'une collection.
-  Future<int> _count(String collection) async {
-    final snap = await db.collection(collection).count().get();
-    return snap.count ?? 0;
-  }
-
-  // Compte les documents d'une collection filtrés sur un champ/valeur.
-  Future<int> _countWhere(
-      String collection, String field, dynamic value) async {
-    final snap = await db
-        .collection(collection)
-        .where(field, isEqualTo: value)
-        .count()
-        .get();
-    return snap.count ?? 0;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return FutureBuilder<List<int>>(
-      // Les 5 requêtes sont parallélisées : le FutureBuilder attend
-      // que toutes soient terminées avant d'afficher les données.
-      future: Future.wait([
-        _count('utilisateurs'),
-        _countWhere('utilisateurs', 'statut', 'Citoyen'),
-        _countWhere('utilisateurs', 'statut', 'Association'),
-        _count('evenements'),
-        _count('votes'),
-      ]),
-      builder: (context, snap) {
-        if (snap.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (snap.hasError) {
-          return Center(child: Text('Erreur : ${snap.error}'));
-        }
-
-        final d = snap.data!;
-        return ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            const _SectionHeader(title: 'Aperçu général'),
-            const SizedBox(height: 12),
-            // Grille 2 colonnes de cartes de statistiques.
-            // shrinkWrap + NeverScrollableScrollPhysics permettent d'intégrer
-            // le GridView dans un ListView sans conflit de scroll.
-            GridView.count(
-              crossAxisCount: 2,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-              childAspectRatio: 1.6,
-              children: [
-                _StatCard(
-                    label: 'Utilisateurs total',
-                    value: d[0],
-                    icon: Icons.group,
-                    color: Colors.blueGrey),
-                _StatCard(
-                    label: 'Habitants',
-                    value: d[1],
-                    icon: Icons.person,
-                    color: Colors.teal),
-                _StatCard(
-                    label: 'Associations',
-                    value: d[2],
-                    icon: Icons.groups,
-                    color: Colors.purple),
-                _StatCard(
-                    label: 'Événements',
-                    value: d[3],
-                    icon: Icons.event,
-                    color: Colors.orange),
-                _StatCard(
-                    label: 'Votes',
-                    value: d[4],
-                    icon: Icons.how_to_vote,
-                    color: Colors.indigo),
-              ],
-            ),
-          ],
-        );
-      },
-    );
-  }
-}
-
-// =============================================================================
-// _StatCard — Carte de compteur pour l'onglet Stats
-//
-// Affiche une icône colorée en haut à gauche, le chiffre en grand
-// et le libellé en petit en bas. childAspectRatio: 1.6 dans le GridView
-// dimensionne la carte pour que ces trois éléments tiennent sans débordement.
-// =============================================================================
-class _StatCard extends StatelessWidget {
-  final String label;
-  final int value;
-  final IconData icon;
-  final Color color;
-
-  const _StatCard(
-      {required this.label,
-        required this.value,
-        required this.icon,
-        required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
+          title: const Text('Connexion Citymove'), centerTitle: true),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Icon(icon, color: color, size: 28),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('$value',
-                    style: TextStyle(
-                        fontSize: 26,
-                        fontWeight: FontWeight.bold,
-                        color: color)),
-                Text(label,
-                    style: const TextStyle(
-                        fontSize: 12, color: Colors.grey)),
-              ],
-            )
+            TextField(
+              controller: emailController,
+              decoration: const InputDecoration(
+                  labelText: 'Adresse e-mail',
+                  border: OutlineInputBorder()),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: mdpController,
+              decoration: const InputDecoration(
+                  labelText: 'Mot de passe',
+                  border: OutlineInputBorder()),
+              obscureText: true,
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton(
+                onPressed: _seConnecter,
+                child: const Text('Se connecter')),
+            // Navigue vers RegisterChoicePage (index 6) pour créer un compte.
+            TextButton(
+              onPressed: () => widget.onNavigate(6, Role.habitant),
+              child: const Text('Créer un compte'),
+            ),
           ],
         ),
       ),
@@ -233,504 +140,429 @@ class _StatCard extends StatelessWidget {
 }
 
 // =============================================================================
-// _UsersTab — Onglet Gestion des utilisateurs
+// RegisterChoicePage — Écran de choix du type de compte
 //
-// Liste tous les utilisateurs de la collection Firestore 'utilisateurs',
-// avec un filtre par statut (Tous / Citoyen / Association / Mairie).
-//
-// Chaque utilisateur dispose d'un menu contextuel (PopupMenuButton) avec :
-//   - Changer de rôle : met à jour le champ 'statut' dans Firestore.
-//   - Supprimer       : supprime le document Firestore (pas le compte Auth).
-//
-// Le flux est temps réel (StreamBuilder) : toute modification externe
-// (ex. : validation d'une association depuis _PendingAssosTab) est
-// immédiatement reflétée dans la liste sans recharger.
-//
-// Limitation : la suppression retire uniquement le document Firestore,
-// pas le compte Firebase Auth. Pour une suppression complète, il faudrait
-// appeler l'Admin SDK via une Cloud Function.
+// Écran intermédiaire simple entre la page de connexion et les formulaires
+// d'inscription. Oriente vers :
+//   - RegisterHabitantPage (index 7) : compte activé immédiatement.
+//   - RegisterAssoPage     (index 8) : compte en attente de validation mairie.
 // =============================================================================
-class _UsersTab extends StatefulWidget {
-  final FirebaseFirestore db;
-  const _UsersTab({required this.db});
-
-  @override
-  State<_UsersTab> createState() => _UsersTabState();
-}
-
-class _UsersTabState extends State<_UsersTab> {
-  String _filter = 'Tous';
-  final List<String> _filters = ['Tous', 'Citoyen', 'Association', 'Mairie'];
-
-  // Retourne le flux Firestore filtré selon le statut sélectionné.
-  // Si 'Tous', aucun filtre where n'est appliqué.
-  Stream<QuerySnapshot> get _stream {
-    Query q = widget.db.collection('utilisateurs');
-    if (_filter != 'Tous') {
-      q = q.where('statut', isEqualTo: _filter);
-    }
-    return q.snapshots();
-  }
-
-  // Met à jour le champ 'statut' d'un utilisateur dans Firestore.
-  // La modification est immédiate et reflétée dans le StreamBuilder.
-  Future<void> _updateRole(String uid, String nouveauStatut) async {
-    await widget.db
-        .collection('utilisateurs')
-        .doc(uid)
-        .update({'statut': nouveauStatut});
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Rôle mis à jour : $nouveauStatut')));
-    }
-  }
-
-  // ---------------------------------------------------------------------------
-  // _deleteUser — Suppression d'un utilisateur
-  //
-  // Affiche un dialog de confirmation avant de supprimer le document Firestore.
-  // Note : ne supprime pas le compte Firebase Auth (nécessiterait Admin SDK).
-  // ---------------------------------------------------------------------------
-  Future<void> _deleteUser(String uid, String email) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Supprimer le compte'),
-        content: Text('Supprimer définitivement le compte de $email ?'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Annuler')),
-          TextButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Supprimer',
-                  style: TextStyle(color: Colors.red))),
-        ],
-      ),
-    );
-    if (confirmed == true) {
-      await widget.db.collection('utilisateurs').doc(uid).delete();
-    }
-  }
+class RegisterChoicePage extends StatelessWidget {
+  final Function(int, Role) onNavigate;
+  const RegisterChoicePage({super.key, required this.onNavigate});
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        // Barre de filtres par statut, scrollable horizontalement.
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: _filters.map((f) {
-                final selected = _filter == f;
-                return Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: FilterChip(
-                    label: Text(f),
-                    selected: selected,
-                    onSelected: (_) => setState(() => _filter = f),
-                  ),
-                );
-              }).toList(),
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Créer un compte'),
+        // Retour explicite vers LoginPage plutôt que Navigator.pop,
+        // car NavBarre gère la navigation par index et non par pile.
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => onNavigate(0, Role.habitant),
+        ),
+      ),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            ElevatedButton.icon(
+              icon: const Icon(Icons.person),
+              label: const Text('Je suis un Habitant'),
+              onPressed: () => onNavigate(7, Role.habitant),
             ),
-          ),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              icon: const Icon(Icons.group),
+              label: const Text('Je suis une Association'),
+              onPressed: () => onNavigate(8, Role.association),
+            ),
+          ],
         ),
-        const Divider(height: 1),
-        Expanded(
-          child: StreamBuilder<QuerySnapshot>(
-            stream: _stream,
-            builder: (context, snap) {
-              if (snap.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
-              }
-              if (snap.hasError) {
-                return Center(child: Text('Erreur : ${snap.error}'));
-              }
-
-              final docs = snap.data!.docs;
-              if (docs.isEmpty) {
-                return const Center(
-                    child: Text('Aucun utilisateur trouvé.'));
-              }
-
-              return ListView.separated(
-                itemCount: docs.length,
-                separatorBuilder: (_, __) => const Divider(height: 1),
-                itemBuilder: (context, i) {
-                  final data = docs[i].data() as Map<String, dynamic>;
-                  final uid = docs[i].id;
-                  final email = data['email'] ?? 'Email inconnu';
-                  final nom = data['nom'] ?? '';
-                  final statut = data['statut'] ?? 'Citoyen';
-
-                  return ListTile(
-                    // _RoleAvatar affiche une icône colorée selon le statut.
-                    leading: _RoleAvatar(statut: statut),
-                    // Si le nom est renseigné, il est le titre principal
-                    // et l'email passe en sous-titre. Sinon, l'email est titre.
-                    title: Text(nom.isNotEmpty ? nom : email,
-                        style: const TextStyle(
-                            fontWeight: FontWeight.w600)),
-                    subtitle: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (nom.isNotEmpty)
-                          Text(email,
-                              style: const TextStyle(fontSize: 12)),
-                        // Badge coloré affichant le statut sous le nom.
-                        _RoleBadge(statut: statut),
-                      ],
-                    ),
-                    isThreeLine: nom.isNotEmpty,
-                    // Menu contextuel : changement de rôle ou suppression.
-                    trailing: PopupMenuButton<String>(
-                      tooltip: 'Actions',
-                      onSelected: (action) {
-                        if (action == 'delete') {
-                          _deleteUser(uid, email);
-                        } else {
-                          _updateRole(uid, action);
-                        }
-                      },
-                      itemBuilder: (_) => [
-                        const PopupMenuItem(
-                            value: 'Citoyen',
-                            child: ListTile(
-                                dense: true,
-                                leading: Icon(Icons.person),
-                                title: Text('Passer en Citoyen'))),
-                        const PopupMenuItem(
-                            value: 'Association',
-                            child: ListTile(
-                                dense: true,
-                                leading: Icon(Icons.groups),
-                                title: Text('Passer en Association'))),
-                        const PopupMenuItem(
-                            value: 'Mairie',
-                            child: ListTile(
-                                dense: true,
-                                leading: Icon(Icons.account_balance),
-                                title: Text('Passer en Mairie'))),
-                        const PopupMenuDivider(),
-                        const PopupMenuItem(
-                            value: 'delete',
-                            child: ListTile(
-                                dense: true,
-                                leading: Icon(Icons.delete,
-                                    color: Colors.red),
-                                title: Text('Supprimer',
-                                    style: TextStyle(
-                                        color: Colors.red)))),
-                      ],
-                    ),
-                  );
-                },
-              );
-            },
-          ),
-        ),
-      ],
+      ),
     );
   }
 }
 
 // =============================================================================
-// _PendingAssosTab — Onglet Associations en attente de validation
+// RegisterHabitantPage — Formulaire d'inscription pour un habitant
 //
-// Affiche les documents Firestore dont :
-//   statut  == 'Association'
-//   validee == false
+// Crée simultanément :
+//   - Un compte Firebase Auth (email + mot de passe).
+//   - Un document Firestore dans 'utilisateurs/{uid}' avec statut 'Citoyen'.
 //
-// Ce sont les comptes créés via RegisterAssoPage qui n'ont pas encore
-// été examinés par la mairie.
+// Le compte est directement utilisable après création (pas de validation).
 //
-// Deux actions par demande :
-//   Valider → passe 'statut' à 'Association' et 'validee' à true.
-//              L'association peut alors se connecter (LoginPage le vérifie).
-//   Refuser → supprime le document Firestore (et le compte reste bloqué
-//              dans Firebase Auth, sans accès à l'application).
+// Validations côté client avant tout appel réseau :
+//   - Email et date de naissance obligatoires.
+//   - Mots de passe identiques et d'au moins 6 caractères.
 // =============================================================================
-class _PendingAssosTab extends StatelessWidget {
-  final FirebaseFirestore db;
-  const _PendingAssosTab({required this.db});
-
-  // ---------------------------------------------------------------------------
-  // _valider — Approuve la demande d'une association
-  //
-  // Met à jour le document Firestore :
-  //   statut  → 'Association' (déjà le cas, mais explicite pour clarté)
-  //   validee → true
-  //
-  // Après cette mise à jour, LoginPage laissera passer l'association
-  // car la vérification `if (!validee)` sera fausse.
-  // ---------------------------------------------------------------------------
-  Future<void> _valider(BuildContext context, FirebaseFirestore db,
-      String uid, String nom) async {
-    await db
-        .collection('utilisateurs')
-        .doc(uid)
-        .update({'statut': 'Association', 'validee': true});
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Association "$nom" validée ✓')));
-    }
-  }
-
-  // ---------------------------------------------------------------------------
-  // _refuser — Rejette la demande d'une association
-  //
-  // Affiche un dialog de confirmation, puis supprime le document Firestore.
-  // Le compte Firebase Auth reste actif mais sans document associé,
-  // ce qui empêche toute connexion (LoginPage lit le document pour le rôle).
-  // ---------------------------------------------------------------------------
-  Future<void> _refuser(BuildContext context, FirebaseFirestore db,
-      String uid, String nom) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Refuser l\'association'),
-        content: Text('Supprimer la demande de "$nom" ?'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Annuler')),
-          TextButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Refuser',
-                  style: TextStyle(color: Colors.red))),
-        ],
-      ),
-    );
-    if (confirmed == true) {
-      await db.collection('utilisateurs').doc(uid).delete();
-    }
-  }
+class RegisterHabitantPage extends StatefulWidget {
+  final Function(int, Role) onNavigate;
+  const RegisterHabitantPage({super.key, required this.onNavigate});
 
   @override
-  Widget build(BuildContext context) {
-    // Requête filtrée sur les associations non validées.
-    // Le StreamBuilder met à jour la liste en temps réel :
-    // une association validée disparaît instantanément de cet onglet.
-    final stream = db
-        .collection('utilisateurs')
-        .where('statut', isEqualTo: 'Association')
-        .where('validee', isEqualTo: false)
-        .snapshots();
+  State<RegisterHabitantPage> createState() => _RegisterHabitantPageState();
+}
 
-    return StreamBuilder<QuerySnapshot>(
-      stream: stream,
-      builder: (context, snap) {
-        if (snap.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (snap.hasError) {
-          return Center(child: Text('Erreur : ${snap.error}'));
-        }
+class _RegisterHabitantPageState extends State<RegisterHabitantPage> {
+  final emailController           = TextEditingController();
+  final mdpController             = TextEditingController();
+  final mdpConfirmationController = TextEditingController();
+  final dateNaissanceController   = TextEditingController();
 
-        final docs = snap.data!.docs;
+  @override
+  void dispose() {
+    emailController.dispose();
+    mdpController.dispose();
+    mdpConfirmationController.dispose();
+    dateNaissanceController.dispose();
+    super.dispose();
+  }
 
-        // État vide : icône de validation pour indiquer qu'il n'y a rien à faire.
-        if (docs.isEmpty) {
-          return const Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.check_circle_outline,
-                    size: 64, color: Colors.green),
-                SizedBox(height: 12),
-                Text('Aucune demande en attente',
-                    style: TextStyle(fontSize: 16)),
-              ],
-            ),
-          );
-        }
+  // Ouvre le sélecteur de date natif et formate le résultat en JJ/MM/AAAA.
+  // La plage autorisée est 1920 → aujourd'hui pour couvrir toutes les générations.
+  Future<void> _selectDate(BuildContext context) async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: DateTime(2000),
+      firstDate: DateTime(1920),
+      lastDate: DateTime.now(),
+    );
+    if (picked != null) {
+      setState(() {
+        dateNaissanceController.text =
+        '${picked.day.toString().padLeft(2, '0')}/'
+            '${picked.month.toString().padLeft(2, '0')}/'
+            '${picked.year}';
+      });
+    }
+  }
 
-        return ListView.builder(
-          padding: const EdgeInsets.all(12),
-          itemCount: docs.length,
-          itemBuilder: (context, i) {
-            final data = docs[i].data() as Map<String, dynamic>;
-            final uid = docs[i].id;
-            final nom = data['nom'] ?? 'Association inconnue';
-            final email = data['email'] ?? '';
-            final sujet = data['sujet'] ?? '';
-            final siret = data['siret'] ?? '';
+  // ---------------------------------------------------------------------------
+  // _creerCompteHabitant — Création du compte habitant
+  //
+  // Ordre des opérations :
+  //   1. Validations locales (champs vides, mots de passe).
+  //   2. createUserWithEmailAndPassword → crée le compte Firebase Auth.
+  //   3. set() dans Firestore → enregistre le profil avec statut 'Citoyen'.
+  //   4. Dialog de confirmation, puis retour à la page de connexion.
+  //
+  // La date de naissance est stockée en texte (JJ/MM/AAAA) pour faciliter
+  // l'affichage. Elle pourra être utilisée pour la restriction d'âge des votes.
+  // ---------------------------------------------------------------------------
+  Future<void> _creerCompteHabitant() async {
+    if (emailController.text.isEmpty ||
+        dateNaissanceController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('Veuillez remplir tous les champs.')));
+      return;
+    }
+    if (mdpController.text != mdpConfirmationController.text) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Les mots de passe ne sont pas identiques.')));
+      return;
+    }
+    if (mdpController.text.length < 6) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text(
+              'Le mot de passe doit contenir au moins 6 caractères')));
+      return;
+    }
 
-            return Card(
-              margin: const EdgeInsets.only(bottom: 12),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // En-tête : nom de l'association + badge "En attente".
-                    Row(
-                      children: [
-                        const Icon(Icons.groups, color: Colors.purple),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(nom,
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16)),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: Colors.orange.withOpacity(0.15),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                                color: Colors.orange.withOpacity(0.4)),
-                          ),
-                          child: const Text('En attente',
-                              style: TextStyle(
-                                  fontSize: 11, color: Colors.orange)),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    // Détails de la demande : email, sujet, SIRET.
-                    // _InfoRow est masqué si le champ est vide.
-                    if (email.isNotEmpty)
-                      _InfoRow(icon: Icons.email, text: email),
-                    if (sujet.isNotEmpty)
-                      _InfoRow(icon: Icons.category, text: sujet),
-                    if (siret.isNotEmpty)
-                      _InfoRow(
-                          icon: Icons.numbers, text: 'SIRET : $siret'),
-                    const SizedBox(height: 14),
-                    // Boutons Refuser / Valider côte à côte.
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            icon: const Icon(Icons.close,
-                                color: Colors.red),
-                            label: const Text('Refuser',
-                                style: TextStyle(color: Colors.red)),
-                            style: OutlinedButton.styleFrom(
-                                side: const BorderSide(
-                                    color: Colors.red)),
-                            onPressed: () =>
-                                _refuser(context, db, uid, nom),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: ElevatedButton.icon(
-                            icon: const Icon(Icons.check),
-                            label: const Text('Valider'),
-                            style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.green,
-                                foregroundColor: Colors.white),
-                            onPressed: () =>
-                                _valider(context, db, uid, nom),
-                          ),
-                        ),
-                      ],
-                    )
-                  ],
-                ),
+    try {
+      UserCredential userCredential =
+      await FirebaseAuth.instance.createUserWithEmailAndPassword(
+        email: emailController.text.trim(),
+        password: mdpController.text,
+      );
+
+      String uid = userCredential.user!.uid;
+      await FirebaseFirestore.instance
+          .collection('utilisateurs')
+          .doc(uid)
+          .set({
+        'uid': uid,
+        'email': emailController.text.trim(),
+        'date_naissance': dateNaissanceController.text,
+        'statut': 'Citoyen',
+        'date_creation': FieldValue.serverTimestamp(),
+      });
+
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Compte créé !'),
+            content:
+            const Text('Vous pouvez maintenant vous connecter.'),
+            actions: [
+              TextButton(
+                // popUntil(isFirst) ferme tous les écrans empilés pour
+                // retourner directement à LoginPage.
+                onPressed: () =>
+                    Navigator.popUntil(context, (r) => r.isFirst),
+                child: const Text('OK'),
               ),
-            );
-          },
+            ],
+          ),
         );
-      },
-    );
+      }
+    } on FirebaseAuthException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Erreur: ${e.message}')));
+      }
+    }
   }
-}
-
-// =============================================================================
-// WIDGETS UTILITAIRES PARTAGÉS ENTRE LES ONGLETS
-// =============================================================================
-
-// Titre de section en couleur primaire du thème, utilisé dans _StatsTab.
-class _SectionHeader extends StatelessWidget {
-  final String title;
-  const _SectionHeader({required this.title});
 
   @override
   Widget build(BuildContext context) {
-    return Text(title,
-        style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w700,
-            color: Theme.of(context).colorScheme.primary,
-            letterSpacing: 0.8));
-  }
-}
-
-// Avatar circulaire avec icône colorée selon le statut de l'utilisateur.
-// Utilisé comme leading dans les ListTile de _UsersTab.
-class _RoleAvatar extends StatelessWidget {
-  final String statut;
-  const _RoleAvatar({required this.statut});
-
-  @override
-  Widget build(BuildContext context) {
-    // Pattern matching Dart 3 : retourne (color, icon) selon le statut.
-    final (color, icon) = switch (statut) {
-      'Mairie'      => (Colors.blueGrey, Icons.account_balance),
-      'Association' => (Colors.purple, Icons.groups),
-      _             => (Colors.teal, Icons.person),
-    };
-    return CircleAvatar(
-      backgroundColor: color.withOpacity(0.15),
-      child: Icon(icon, color: color, size: 20),
-    );
-  }
-}
-
-// Badge textuel coloré affichant le statut sous le nom dans _UsersTab.
-// Même logique de couleur que _RoleAvatar pour la cohérence visuelle.
-class _RoleBadge extends StatelessWidget {
-  final String statut;
-  const _RoleBadge({required this.statut});
-
-  @override
-  Widget build(BuildContext context) {
-    final color = switch (statut) {
-      'Mairie'      => Colors.blueGrey,
-      'Association' => Colors.purple,
-      _             => Colors.teal,
-    };
-    return Container(
-      margin: const EdgeInsets.only(top: 4),
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.12),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: color.withOpacity(0.35)),
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Inscription Habitant'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => widget.onNavigate(0, Role.habitant),
+        ),
       ),
-      child: Text(statut,
-          style: TextStyle(
-              fontSize: 11,
-              color: color,
-              fontWeight: FontWeight.w600)),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          TextField(
+            controller: emailController,
+            decoration: const InputDecoration(
+                labelText: 'E-mail', border: OutlineInputBorder()),
+          ),
+          const SizedBox(height: 16),
+          // Champ en lecture seule : toute saisie passe par le DatePicker
+          // pour garantir un format cohérent.
+          TextField(
+            controller: dateNaissanceController,
+            readOnly: true,
+            onTap: () => _selectDate(context),
+            decoration: const InputDecoration(
+              labelText: 'Date de naissance *',
+              suffixIcon: Icon(Icons.calendar_today),
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: mdpController,
+            decoration: const InputDecoration(
+                labelText: 'Mot de passe', border: OutlineInputBorder()),
+            obscureText: true,
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: mdpConfirmationController,
+            decoration: const InputDecoration(
+                labelText: 'Confirmer le mot de passe',
+                border: OutlineInputBorder()),
+            obscureText: true,
+          ),
+          const SizedBox(height: 24),
+          ElevatedButton(
+              onPressed: _creerCompteHabitant,
+              child: const Text('S\'inscrire')),
+        ],
+      ),
     );
   }
 }
 
-// Ligne d'information icône + texte utilisée dans les cartes de _PendingAssosTab.
-// Le texte est Expanded pour gérer les longues valeurs (emails, SIRET) sans débordement.
-class _InfoRow extends StatelessWidget {
-  final IconData icon;
-  final String text;
-  const _InfoRow({required this.icon, required this.text});
+// =============================================================================
+// RegisterAssoPage — Formulaire d'inscription pour une association
+//
+// Crée simultanément :
+//   - Un compte Firebase Auth (email + mot de passe).
+//   - Un document Firestore dans 'utilisateurs/{uid}' avec :
+//       statut  = 'Association'
+//       validee = false   ← bloque la connexion jusqu'à validation mairie
+//
+// Après création, l'utilisateur est immédiatement déconnecté (signOut)
+// et ne pourra se connecter qu'une fois que la mairie aura passé
+// 'validee' à true via l'onglet "En attente" de AdminConsolePage.
+//
+// Champs spécifiques aux associations :
+//   - nom    : nom de l'association affiché dans la liste des événements.
+//   - sujet  : domaine d'activité (culture, sport, etc.).
+//   - siret  : 14 chiffres, sans espaces (InputFormatter appliqué).
+// =============================================================================
+class RegisterAssoPage extends StatefulWidget {
+  final Function(int, Role) onNavigate;
+  const RegisterAssoPage({super.key, required this.onNavigate});
+
+  @override
+  State<RegisterAssoPage> createState() => _RegisterAssoPageState();
+}
+
+class _RegisterAssoPageState extends State<RegisterAssoPage> {
+  final emailController           = TextEditingController();
+  final mdpController             = TextEditingController();
+  final mdpConfirmationController = TextEditingController();
+  final nomController             = TextEditingController();
+  final sujetController           = TextEditingController();
+  final siretController           = TextEditingController();
+
+  @override
+  void dispose() {
+    emailController.dispose();
+    mdpController.dispose();
+    mdpConfirmationController.dispose();
+    nomController.dispose();
+    sujetController.dispose();
+    siretController.dispose();
+    super.dispose();
+  }
+
+  // ---------------------------------------------------------------------------
+  // _creerCompteAsso — Création du compte association
+  //
+  // Ordre des opérations :
+  //   1. Validations locales (mots de passe).
+  //   2. createUserWithEmailAndPassword → crée le compte Firebase Auth.
+  //   3. set() dans Firestore → profil avec validee = false.
+  //   4. signOut() → l'association ne peut pas encore se connecter.
+  //   5. Dialog d'information, puis retour à LoginPage (index 0).
+  // ---------------------------------------------------------------------------
+  Future<void> _creerCompteAsso() async {
+    if (mdpController.text != mdpConfirmationController.text) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Les mots de passe ne sont pas identiques.')));
+      return;
+    }
+    if (mdpController.text.length < 6) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text(
+              'Le mot de passe doit contenir au moins 6 caractères')));
+      return;
+    }
+
+    try {
+      UserCredential userCredential =
+      await FirebaseAuth.instance.createUserWithEmailAndPassword(
+        email: emailController.text.trim(),
+        password: mdpController.text,
+      );
+
+      // validee = false : LoginPage refusera la connexion tant que la mairie
+      // n'a pas approuvé le compte depuis AdminConsolePage (_PendingAssosTab).
+      String uid = userCredential.user!.uid;
+      await FirebaseFirestore.instance
+          .collection('utilisateurs')
+          .doc(uid)
+          .set({
+        'uid': uid,
+        'email': emailController.text.trim(),
+        'nom': nomController.text,
+        'sujet': sujetController.text,
+        'siret': siretController.text,
+        'statut': 'Association',
+        'validee': false,
+        'date_creation': FieldValue.serverTimestamp(),
+      });
+
+      // Déconnexion immédiate : l'association doit attendre la validation.
+      await FirebaseAuth.instance.signOut();
+
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Demande envoyée !'),
+            content: Text(
+                'L\'association ${nomController.text} a bien été enregistrée. '
+                    'Votre compte sera accessible une fois validé par la mairie.'),
+            actions: [
+              TextButton(
+                onPressed: () => widget.onNavigate(0, Role.habitant),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+      }
+    } on FirebaseAuthException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Erreur: ${e.message}')));
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
-      child: Row(
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Inscription Association'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => widget.onNavigate(0, Role.association),
+        ),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
         children: [
-          Icon(icon, size: 15, color: Colors.grey),
-          const SizedBox(width: 6),
-          Expanded(
-              child: Text(text, style: const TextStyle(fontSize: 13))),
+          TextField(
+            controller: emailController,
+            decoration: const InputDecoration(
+                labelText: 'E-mail', border: OutlineInputBorder()),
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: nomController,
+            decoration: const InputDecoration(
+                labelText: 'Nom de l\'association',
+                border: OutlineInputBorder()),
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: sujetController,
+            decoration: const InputDecoration(
+                labelText: 'Sujet / Domaine',
+                border: OutlineInputBorder()),
+          ),
+          const SizedBox(height: 16),
+          // Champ SIRET : 14 chiffres exactement, sans espaces.
+          // InputFormatters : chiffres uniquement, max 14 caractères,
+          // espaces refusés (les utilisateurs ont tendance à en mettre).
+          TextField(
+            controller: siretController,
+            decoration: const InputDecoration(
+                labelText: 'Numéro SIRET',
+                border: OutlineInputBorder()),
+            keyboardType: TextInputType.number,
+            inputFormatters: [
+              FilteringTextInputFormatter.digitsOnly,
+              LengthLimitingTextInputFormatter(14),
+              FilteringTextInputFormatter.deny(RegExp(r'\s')),
+            ],
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: mdpController,
+            decoration: const InputDecoration(
+                labelText: 'Mot de passe',
+                border: OutlineInputBorder()),
+            obscureText: true,
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: mdpConfirmationController,
+            decoration: const InputDecoration(
+                labelText: 'Confirmer le mot de passe',
+                border: OutlineInputBorder()),
+            obscureText: true,
+          ),
+          const SizedBox(height: 24),
+          ElevatedButton(
+            onPressed: _creerCompteAsso,
+            child: const Text('Demander l\'inscription'),
+          ),
         ],
       ),
     );
